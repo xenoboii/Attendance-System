@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+logs/
+*.db
+*.db-wal
+*.db-shm
+.env
+.vscode/settings.json
+
+# licensed Microsoft Office font - copied locally, not published
+app/static/fonts/OLDENGL.TTF
+

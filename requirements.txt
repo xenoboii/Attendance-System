@@ -1,0 +1,10 @@
+flask>=3.1
+waitress>=3.0
+reportlab>=4.0
+Pillow>=12.0
+
+# Not a pip package - also required for the attendance report:
+#   app/static/fonts/OLDENGL.TTF   (Old English Text MT, for the university name)
+#   app/static/img/school_logo.png (LSPU seal)
+# Copy them along with the project. Without the font the report falls back to a plain serif.
+pytest>=8.0

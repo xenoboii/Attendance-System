@@ -1,0 +1,10 @@
+# Extra packages for the Raspberry Pi hardware only (not needed on the laptop)
+-r requirements.txt
+RPLCD>=1.3
+smbus2>=0.4
+mfrc522>=0.0.7      # only if you use the RC522 module
+gpiozero>=2.0       # buzzer / LEDs
+
+# Also copy to the Pi (not pip packages):
+#   app/static/fonts/OLDENGL.TTF    report font (licensed Office font, kept out of git)
+#   app/static/img/school_logo.png  LSPU seal
