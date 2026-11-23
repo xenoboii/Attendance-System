@@ -681,34 +681,27 @@ a.sched-item.sched-link:hover { background: var(--hover); color: inherit; }
 .attendance-fold[open] .fold-chevron { transform: rotate(180deg); }
 .attendance-fold .table-responsive { max-height: none; }
 @media (min-width: 768px) { .section-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.session-mode-group { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
-.session-mode-form { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+/* Session page status row: status on the left (chip, then its explanation / auto times stacked
+   under it), the Check-out and Check-in mode dropdowns on the right, bottoms aligned.
+   Long text wraps inside the left side and never pushes the dropdowns onto a new line.
+   Phones: status on top, the two dropdowns side by side, full width, underneath. */
+#live-state { display: flex; align-items: flex-end; justify-content: space-between; gap: .75rem 1.5rem; }
+.session-status-block { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; }
+.session-status-block > .chip { height: 38px; display: inline-flex; align-items: center; gap: .45rem;
+                                font-size: .95rem; padding: 0 .95rem; }
+.session-status-lines { display: flex; flex-direction: column; gap: .15rem; font-size: .8rem; color: var(--muted); line-height: 1.35; }
+.session-mode-slot { flex: none; }
+.session-mode-group { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: .5rem; }
+.session-mode-form { display: flex; align-items: flex-end; gap: .5rem; }
+.session-mode-group .form-select { height: 38px; }
 .session-mode-form.checkout-control .form-select { width: 185px; }
 .session-mode-form .form-select { width: 155px; }
-/* status chip + the two dropdowns (check-out, check-in mode) on one row, vertically centred,
-   all the same height */
-#live-state { align-items: center; }
-#live-state > .chip { height: 38px; display: inline-flex; align-items: center;
-                      padding-top: 0 !important; padding-bottom: 0 !important; }
-.session-mode-group .form-select { height: 38px; }
-.session-mode-group { flex-wrap: nowrap; }
-@media (max-width: 991.98px) {
-  #live-state { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; }
-  #live-state > .chip { grid-area: 1 / 1; justify-self: start; font-size: .85rem !important; padding: .45rem .65rem !important; }
-  .session-mode-slot { grid-area: 1 / 2; margin-left: 0 !important; }
-  .session-mode-form .form-select { width: 130px; font-size: .85rem; }
-  .session-mode-form.checkout-control .form-select { width: 170px; }
-  .session-window, .session-status-description { grid-column: 1 / -1; }
-}
-@media (max-width: 575.98px) {
-  /* phones: the chip on top, the two dropdowns on their own full-width row under it,
-     side by side and equal width, so nothing overlaps the chip */
-  #live-state > .chip { grid-area: 1 / 1 / 2 / -1; }
-  .session-mode-slot { grid-area: 2 / 1 / 3 / -1; }
+@media (max-width: 767.98px) {
+  #live-state { flex-direction: column; align-items: stretch; }
+  .session-mode-slot { width: 100%; }
   .session-mode-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
-  .session-mode-form, .session-mode-form .form-select,
-  .session-mode-form.checkout-control .form-select { width: 100%; }
-  .session-mode-form { flex-wrap: nowrap; }
+  .session-mode-form, .session-mode-form .session-field { width: 100%; min-width: 0; }
+  .session-mode-form .form-select, .session-mode-form.checkout-control .form-select { width: 100%; }
 }
 .session-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; min-height: 0; }
 .session-workspace > * { min-width: 0; min-height: 0; }
@@ -731,8 +724,6 @@ a.sched-item.sched-link:hover { background: var(--hover); color: inherit; }
 /* "Check-out" / "Check-in mode" dropdowns: visible labels above them */
 .session-field { display: flex; flex-direction: column; gap: .2rem; }
 .session-field-label { font-size: .7rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 0; }
-.session-mode-group, .session-mode-form { align-items: flex-end !important; }
-#live-state { align-items: flex-end !important; }
 
 /* roster search */
 .roster-search { position: relative; display: flex; align-items: center; gap: .75rem; padding: .65rem .75rem;

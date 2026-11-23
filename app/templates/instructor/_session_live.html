@@ -6,21 +6,28 @@
                      'ended': ('muted', 'Closed', 'Check-in has ended. Students without a record are absent.'),
                      'upcoming': ('info', 'Not open yet', 'Check-in is closed for now.'),
                      'paused': ('muted', 'Paused', 'Check-in is closed for now.')}[phase] %}
-<div class="d-flex flex-wrap align-items-center gap-2 mb-3" id="live-state" data-phase="{{ phase }}">
-  {% if s.type == 'async' %}
-  <span class="chip chip-info fs-6 px-3 py-2"><i class="bi bi-house-door"></i> Async activity</span>
-  <span class="small text-muted session-status-description">{% if phase == 'upcoming' %}Scheduled for {{ s.session_date|nicedate }}.{% else %}No check-in needed.{% endif %} You can adjust attendance below.</span>
-  {% else %}
-  <span class="chip chip-{{ phase_text[0] }} fs-6 px-3 py-2">{% if phase in ('present','late','checkout') %}<span class="dot pulse"></span>{% endif %}{{ phase_text[1] }}</span>
-  {% if phase_text[2] %}<span class="small text-muted session-status-description">{{ phase_text[2] }}</span>{% endif %}
-  {% endif %}
-  {% if s.type == 'async' %}
-  {% elif s.checkin_mode == 'auto' and info.window %}
-    <span class="small text-muted session-window"><i class="bi bi-magic"></i> Auto: opens {{ info.window.opens_at.strftime('%I:%M %p').lstrip('0') }},
-      late {{ info.window.late_at.strftime('%I:%M %p').lstrip('0') }}, closes {{ info.window.closes_at.strftime('%I:%M %p').lstrip('0') }}</span>
-  {% endif %}
+{# status row: the status (chip + its explanation lines) on the left, the two dropdowns on the right #}
+<div class="mb-3" id="live-state" data-phase="{{ phase }}">
+  <div class="session-status-block">
+    {% if s.type == 'async' %}
+      <span class="chip chip-info"><i class="bi bi-house-door"></i> Async activity</span>
+      <div class="session-status-lines">
+        <span class="session-status-description">{% if phase == 'upcoming' %}Scheduled for {{ s.session_date|nicedate }}.{% else %}No check-in needed.{% endif %} You can adjust attendance below.</span>
+      </div>
+    {% else %}
+      <span class="chip chip-{{ phase_text[0] }}">{% if phase in ('present','late','checkout') %}<span class="dot pulse"></span>{% endif %}{{ phase_text[1] }}</span>
+      {% set auto_line = s.checkin_mode == 'auto' and info.window %}
+      {% if phase_text[2] or auto_line %}
+      <div class="session-status-lines">
+        {% if phase_text[2] %}<span class="session-status-description">{{ phase_text[2] }}</span>{% endif %}
+        {% if auto_line %}<span class="session-window"><i class="bi bi-magic"></i> Auto: opens {{ info.window.opens_at.strftime('%I:%M %p').lstrip('0') }},
+          late {{ info.window.late_at.strftime('%I:%M %p').lstrip('0') }}, closes {{ info.window.closes_at.strftime('%I:%M %p').lstrip('0') }}</span>{% endif %}
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
   {% if s.type != 'async' %}
-    <div class="ms-auto session-mode-slot">{% include 'instructor/_session_mode.html' %}</div>
+    <div class="session-mode-slot">{% include 'instructor/_session_mode.html' %}</div>
   {% endif %}
 </div>
 
