@@ -1,7 +1,7 @@
 """
-Month calendar on the student dashboard.
+Month calendar on the student and instructor dashboards.
 
-Shows, for the classes the student is enrolled in:
+Shows, for the classes the student is enrolled in (or the instructor teaches):
   - the weekly class days,
   - dates the instructor marked "no class" (holiday, suspended classes ...) with the reason,
   - make-up classes and async activities set on a specific date.
@@ -30,25 +30,31 @@ def _shift(y, m, by):
     return f"{idx // 12}-{idx % 12 + 1:02d}"
 
 
-def _enrolled_sql():
-    return """FROM enrollments e
-              JOIN sections s ON s.id = e.section_id
-              JOIN subjects sub ON sub.id = s.subject_id
-              WHERE e.student_id = ? AND e.status = 'active' AND e.deleted_at IS NULL
-                AND s.deleted_at IS NULL AND sub.deleted_at IS NULL AND sub.ended_at IS NULL"""
+# Whose classes: a student's enrolled sections, or the sections an instructor teaches.
+# `join` adds one more table joined on the section id (schedules, exceptions, sessions ...).
+def _scope_sql(who: str, join: str = "") -> str:
+    if who == "instructor":
+        return f"""FROM sections s
+                   JOIN subjects sub ON sub.id = s.subject_id
+                   {join}
+                   WHERE sub.instructor_id = ? AND s.deleted_at IS NULL AND sub.deleted_at IS NULL
+                     AND sub.ended_at IS NULL"""
+    return f"""FROM enrollments e
+               JOIN sections s ON s.id = e.section_id
+               JOIN subjects sub ON sub.id = s.subject_id
+               {join}
+               WHERE e.student_id = ? AND e.status = 'active' AND e.deleted_at IS NULL
+                 AND s.deleted_at IS NULL AND sub.deleted_at IS NULL AND sub.ended_at IS NULL"""
 
 
-def upcoming_no_class(conn, student_id, today: date, days=NOTICE_DAYS):
-    """No-class days coming up for the student's classes, soonest first."""
+def upcoming_no_class(conn, user_id, today: date, days=NOTICE_DAYS, who="student"):
+    """No-class days coming up for these classes, soonest first."""
     rows = conn.execute(
         f"""SELECT se.exception_date, se.reason, sub.code, s.name AS section_name
-            FROM schedule_exceptions se JOIN enrollments e ON e.section_id = se.section_id
-            JOIN sections s ON s.id = e.section_id JOIN subjects sub ON sub.id = s.subject_id
-            WHERE e.student_id = ? AND e.status = 'active' AND e.deleted_at IS NULL
-              AND s.deleted_at IS NULL AND sub.deleted_at IS NULL AND sub.ended_at IS NULL
+            {_scope_sql(who, "JOIN schedule_exceptions se ON se.section_id = s.id")}
               AND se.exception_date BETWEEN ? AND ?
             ORDER BY se.exception_date, sub.code""",
-        (student_id, today.isoformat(), (today + timedelta(days=days)).isoformat())).fetchall()
+        (user_id, today.isoformat(), (today + timedelta(days=days)).isoformat())).fetchall()
     out = []
     for r in rows:
         d = date.fromisoformat(r["exception_date"])
@@ -58,7 +64,10 @@ def upcoming_no_class(conn, student_id, today: date, days=NOTICE_DAYS):
     return out
 
 
-def month_view(conn, student_id, year, month, now=None) -> dict:
+def month_view(conn, user_id, year, month, now=None, who="student") -> dict:
+    """who = 'student' (classes they're enrolled in) or 'instructor' (classes they teach).
+    Each event carries session_id when that class date already has a session (instructors
+    get a link to it)."""
     now = now or datetime.now()
     today = now.date()
     weeks = calendar.Calendar(firstweekday=6).monthdatescalendar(year, month)      # Sunday first
@@ -68,25 +77,32 @@ def month_view(conn, student_id, year, month, now=None) -> dict:
     for r in conn.execute(
             f"""SELECT sc.id AS schedule_id, sc.day_of_week, sc.start_time, sc.end_time, sc.room,
                        s.id AS section_id, s.name AS section_name, sub.code, sub.title
-                {_enrolled_sql().replace("FROM enrollments e", "FROM enrollments e JOIN schedules sc ON sc.section_id = e.section_id AND sc.deleted_at IS NULL")}
-                ORDER BY sc.start_time""", (student_id,)):
+                {_scope_sql(who, "JOIN schedules sc ON sc.section_id = s.id AND sc.deleted_at IS NULL")}
+                ORDER BY sc.start_time""", (user_id,)):
         weekly.setdefault(r["day_of_week"], []).append(dict(r))
 
     no_class = {}                                              # (section, date) -> reason
     for r in conn.execute(
             f"""SELECT se.section_id, se.exception_date, se.reason
-                {_enrolled_sql().replace("FROM enrollments e", "FROM enrollments e JOIN schedule_exceptions se ON se.section_id = e.section_id")}
-                AND se.exception_date BETWEEN ? AND ?""", (student_id, first, last)):
+                {_scope_sql(who, "JOIN schedule_exceptions se ON se.section_id = s.id")}
+                AND se.exception_date BETWEEN ? AND ?""", (user_id, first, last)):
         no_class[(r["section_id"], r["exception_date"])] = r["reason"]
 
-    extra = {}                                                 # date -> [make-up / async]
+    # sessions that exist on these dates: weekly ones (for the link) and extra ones (make-up,
+    # async, or a class added by hand on a day that isn't on the schedule)
+    extra, by_schedule = {}, {}
     for r in conn.execute(
-            f"""SELECT cs.schedule_id, cs.session_date, cs.start_time, cs.end_time, cs.type, cs.title AS session_title,
+            f"""SELECT cs.id AS session_id, cs.schedule_id, cs.session_date, cs.start_time, cs.end_time,
+                       cs.type, cs.title AS session_title,
                        s.id AS section_id, s.name AS section_name, sub.code, sub.title
-                {_enrolled_sql().replace("FROM enrollments e", "FROM enrollments e JOIN class_sessions cs ON cs.section_id = e.section_id AND cs.deleted_at IS NULL AND cs.type IN ('makeup', 'async')")}
+                {_scope_sql(who, "JOIN class_sessions cs ON cs.section_id = s.id AND cs.deleted_at IS NULL")}
                 AND cs.session_date BETWEEN ? AND ?
-                ORDER BY cs.start_time""", (student_id, first, last)):
-        extra.setdefault(r["session_date"], []).append(dict(r))
+                ORDER BY cs.start_time""", (user_id, first, last)):
+        r = dict(r)
+        if r["schedule_id"] and r["type"] == "regular":
+            by_schedule[(r["schedule_id"], r["session_date"])] = r["session_id"]
+        else:
+            extra.setdefault(r["session_date"], []).append(r)
 
     grid = []
     for week in weeks:
@@ -99,9 +115,11 @@ def month_view(conn, student_id, year, month, now=None) -> dict:
                 if c["schedule_id"] in async_schedules:
                     continue
                 reason = no_class.get((c["section_id"], iso))
-                items.append({**c, "kind": "no_class" if reason else "class", "reason": reason})
+                items.append({**c, "kind": "no_class" if reason else "class", "reason": reason,
+                              "session_id": by_schedule.get((c["schedule_id"], iso))})
             for x in activities:
-                items.append({**x, "kind": x["type"], "reason": None, "room": None})
+                kind = x["type"] if x["type"] in ("makeup", "async") else "class"     # added by hand
+                items.append({**x, "kind": kind, "reason": None, "room": None})
             items.sort(key=lambda i: i.get("start_time") or "99:99")
             kinds = {i["kind"] for i in items}
             row.append({"date": d, "iso": iso, "day": d.day, "in_month": d.month == month,
@@ -113,11 +131,9 @@ def month_view(conn, student_id, year, month, now=None) -> dict:
         grid.append(row)
 
     in_month = [d for w in grid for d in w if d["in_month"]]
-    selected = next((d for d in in_month if d["is_today"]), None) \
-        or next((d for d in in_month if d["events"] and not d["is_past"]), None) \
-        or next((d for d in in_month if d["events"]), in_month[0])
+    selected = next((d for d in in_month if d["is_today"]), None)         or next((d for d in in_month if d["events"] and not d["is_past"]), None)         or next((d for d in in_month if d["events"]), in_month[0])
     return {"year": year, "month": month, "label": f"{calendar.month_name[month]} {year}",
             "prev": _shift(year, month, -1), "next": _shift(year, month, 1),
             "is_current": (year, month) == (today.year, today.month),
             "weeks": grid, "selected": selected["iso"], "selected_title": selected["title"],
-            "notices": upcoming_no_class(conn, student_id, today)}
+            "notices": upcoming_no_class(conn, user_id, today, who=who)}

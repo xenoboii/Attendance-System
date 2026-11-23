@@ -157,7 +157,8 @@ def _school_font(candidates) -> str:
 
 def _name(r):
     """'Last, First Middle Suffix' - like the handwritten sheet."""
-    first = " ".join(p for p in (r["first_name"], r.get("middle_name"), r.get("suffix")) if p)
+    from .accounts import normalize_suffix
+    first = " ".join(p for p in (r["first_name"], r.get("middle_name"), normalize_suffix(r.get("suffix"))) if p)
     return f"{r['last_name']}, {first}"
 
 

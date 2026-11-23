@@ -5,22 +5,26 @@
 {% if not mode_locked and info.phase != 'checkout' %}
 <form method="post" action="{{ url_for('instructor.session_checkout', session_id=s.id) }}" class="session-mode-form checkout-control">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="visually-hidden" for="require-checkout-{{ s.id }}">Check-out</label>
+  <div class="session-field">
+  <label class="session-field-label" for="require-checkout-{{ s.id }}">Check-out</label>
   <select class="form-select form-select-sm" id="require-checkout-{{ s.id }}" name="require"
           title="Check-out" onchange="this.form.requestSubmit()">
     <option value="no" {{ 'selected' if not s.require_checkout }}>No check-out</option>
     <option value="yes" {{ 'selected' if s.require_checkout }}>Check-out required</option>
   </select>
+  </div>
 </form>
 {% endif %}
 <form method="post" action="{{ url_for('instructor.session_mode', session_id=s.id) }}" class="session-mode-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="visually-hidden" for="session-checkin-mode">Check-in mode</label>
+  <div class="session-field">
+  <label class="session-field-label" for="session-checkin-mode">Check-in mode</label>
   <select id="session-checkin-mode" name="mode" class="form-select form-select-sm" data-session-mode
           {{ 'disabled' if mode_locked or not s.start_time }}>
     <option value="auto" {{ 'selected' if s.checkin_mode == 'auto' }} {{ 'disabled' if not s.start_time }}>Automatic</option>
     <option value="manual" {{ 'selected' if s.checkin_mode == 'manual' }}>Manual</option>
   </select>
+  </div>
   {% if mode_locked %}<span class="small text-muted session-mode-lock" role="img" aria-label="Check-in mode locked"
     title="Locked because the session has ended."><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
   {% elif not s.start_time %}<span class="small text-muted">Manual only — no class time.</span>{% endif %}

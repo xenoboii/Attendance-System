@@ -84,7 +84,7 @@ def test_archive_pages_and_read_only(app, client):
     assert post(f"/instructor/subjects/{sid}/end").location.endswith("/instructor/archive")
     arch = get("/instructor/archive").data
     assert b"IT312" in arch and b"Copy to new term" in arch and b"Reopen" in arch
-    assert b"IT312" not in get("/instructor/").data.split(b"panel-body")[1]         # gone from My subjects
+    assert b"IT312" not in get("/instructor/subjects").data                         # gone from My subjects
     assert b"Archived." in get("/instructor/sections/1").data
     # nothing can be changed while archived, but the report still works
     r = post("/instructor/sections/1/schedules", {"day_of_week": "4", "start_time": "20:00", "end_time": "21:00"})

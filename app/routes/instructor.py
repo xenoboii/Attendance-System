@@ -19,7 +19,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
 
 from ..db import get_db
 from ..security import login_required
-from ..services import battery, classes, clock, courses, report, sessions, terms, trash
+from ..services import battery, calendar_view, classes, clock, courses, report, sessions, terms, trash
 from ..services.accounts import ValidationError
 
 bp = Blueprint("instructor", __name__, url_prefix="/instructor")
@@ -83,12 +83,25 @@ def _section_or_404(section_id) -> dict:
 @bp.get("/")
 @login_required("instructor")
 def dashboard():
-    db, iid = get_db(), g.user["id"]
+    """Like the student dashboard: what's happening now (banner), numbers, and a month calendar
+    with the classes of the picked day. The subject list is on My subjects."""
+    db, iid, now = get_db(), g.user["id"], datetime.now()
+    year, month = calendar_view.parse_month(request.args.get("m"), now.date())
+    today = sessions.todays_sessions(db, iid)
     return render_template("instructor/dashboard.html",
-                           subjects=classes.list_subjects(db, iid),
                            stats=classes.instructor_stats(db, iid),
-                           today=sessions.todays_sessions(db, iid),
-                           now=datetime.now())
+                           today=today,
+                           live=[t for t in today if t["phase"] in ("present", "late", "checkout")],
+                           next_up=next((t for t in today if t["phase"] in ("upcoming", "paused")), None),
+                           cal=calendar_view.month_view(db, iid, year, month, now, who="instructor"),
+                           now=now)
+
+
+@bp.get("/subjects")
+@login_required("instructor")
+def subjects_page():
+    """My subjects: every subject this instructor teaches, and where new ones are added."""
+    return render_template("instructor/subjects.html", subjects=classes.list_subjects(get_db(), g.user["id"]))
 
 
 @bp.route("/subjects/new", methods=["GET", "POST"])
@@ -141,7 +154,7 @@ def subject_delete(subject_id):
     subject = _subject_or_404(subject_id)
     classes.delete_subject(get_db(), g.user["id"], subject_id)
     flash(f"{subject['code']} moved to Recently deleted. You can restore it within 30 days.", "info")
-    return redirect(url_for(".dashboard"))
+    return redirect(url_for(".subjects_page"))
 
 
 # ---------------------------------------------------------------- end of semester / archive
@@ -522,6 +535,17 @@ def session_end(session_id):
     return redirect(url_for(".session_page", session_id=session_id))
 
 
+@bp.post("/sessions/<int:session_id>/reset")
+@login_required("instructor")
+def session_reset(session_id):
+    """Undo a mistake: clear every status on this class date and go back to 'not opened yet'."""
+    _session_or_404(session_id)
+    cleared = sessions.reset_session(get_db(), g.user["id"], session_id)
+    flash(f"Statuses reset{f' ({cleared} cleared)' if cleared else ''}. Everyone shows “—” again; "
+          "open check-in when you're ready.", "info")
+    return redirect(url_for(".session_page", session_id=session_id))
+
+
 @bp.post("/sessions/<int:session_id>/async")
 @login_required("instructor")
 def session_set_async(session_id):
@@ -544,7 +568,10 @@ def session_change_async(session_id):
     except ValidationError as exc:
         flash(next(iter(exc.errors.values())), "warning")
     else:
-        flash("Async activity changed.", "info")
+        flash("Changed back to a regular class." if request.form.get("choice") == "regular"
+              else "Async activity changed.", "info")
+    if request.form.get("back") == "session":           # sent from the session page itself
+        return redirect(url_for(".session_page", session_id=session_id))
     return redirect(url_for(".section", section_id=s["section_id"], tab="sessions", _anchor="upcoming-sessions"))
 
 

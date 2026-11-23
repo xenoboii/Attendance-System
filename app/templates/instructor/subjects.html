@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}My subjects{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>My subjects</h1>
+    <div class="sub">Open a subject to manage its sections, students and attendance.</div>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary btn-icon" href="{{ url_for('instructor.subject_new') }}"><i class="bi bi-plus-lg"></i> New subject</a>
+  </div>
+</div>
+
+{% if subjects %}
+<div class="cq cq-cards">
+  {% for s in subjects %}
+    <a class="card card-lift subject-card fill" href="{{ url_for('instructor.subject', subject_id=s.id) }}">
+      <div class="top"></div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <span class="subject-code">{{ s.code }}</span>
+          <span class="chip chip-muted">{{ s.school_year }} · {{ s.semester }}</span>
+        </div>
+        <h2 class="h6 fw-semibold mb-2">{{ s.title }}</h2>
+        <div class="meta">
+          <span><i class="bi bi-collection"></i>{{ s.section_count }} section{{ '' if s.section_count == 1 else 's' }}</span>
+          <span><i class="bi bi-people"></i>{{ s.student_count }} student{{ '' if s.student_count == 1 else 's' }}</span>
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><div class="card-body">
+  <div class="empty">
+    <i class="bi bi-journal-plus"></i><h3>No subjects yet</h3>
+    <p>Create a subject, add sections, then enroll your students.</p>
+    <a class="btn btn-primary" href="{{ url_for('instructor.subject_new') }}">Create your first subject</a>
+  </div>
+</div></div>
+{% endif %}
+{% endblock %}

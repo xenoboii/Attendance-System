@@ -2,7 +2,7 @@
 {% from "_macros.html" import field, select %}
 {% block title %}{{ 'Edit' if subject else 'New' }} subject{% endblock %}
 {% block content %}
-<div class="crumbs"><a href="{{ url_for('instructor.dashboard') }}">My subjects</a>
+<div class="crumbs"><a href="{{ url_for('instructor.subjects_page') }}">My subjects</a>
   {% if subject %}<i class="bi bi-chevron-right small"></i><a href="{{ url_for('instructor.subject', subject_id=subject.id) }}">{{ subject.code }}</a>{% endif %}
   <i class="bi bi-chevron-right small"></i>{{ 'Edit' if subject else 'New subject' }}</div>
 <div class="page-header"><div><h1>{{ 'Edit subject' if subject else 'New subject' }}</h1>
@@ -30,7 +30,7 @@
     </div>
     <div class="d-flex gap-2">
       <button class="btn btn-primary btn-icon"><i class="bi bi-check2"></i> Save subject</button>
-      <a class="btn btn-light" href="{{ url_for('instructor.subject', subject_id=subject.id) if subject else url_for('instructor.dashboard') }}">Cancel</a>
+      <a class="btn btn-light" href="{{ url_for('instructor.subject', subject_id=subject.id) if subject else url_for('instructor.subjects_page') }}">Cancel</a>
     </div>
   </form>
 </div></div>

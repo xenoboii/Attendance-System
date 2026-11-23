@@ -18,8 +18,29 @@ def post(client, url, data=None):
 
 def test_dashboard_lists_subjects(client):
     prof(client)
-    r = get(client, "/instructor/")
-    assert b"IT312" in r.data and b"Embedded Systems" in r.data
+    r = get(client, "/instructor/")                       # dashboard: banner + calendar, no subject list
+    assert b"Good " in r.data and b'id="calendar"' in r.data and b"New subject" not in r.data
+    r = get(client, "/instructor/subjects")               # My subjects: the list + New subject
+    assert b"IT312" in r.data and b"Embedded Systems" in r.data and b"New subject" in r.data
+
+
+def test_instructor_calendar_shows_taught_classes(app):
+    from datetime import datetime
+    from app.db import connect
+    from app.services import calendar_view
+    c = connect(app.config["DATABASE"])
+    now = datetime.now()
+    cal = calendar_view.month_view(c, 1, now.year, now.month, now, who="instructor")
+    today = next(d for w in cal["weeks"] for d in w if d["is_today"])
+    # the demo's classes today (one added by hand, one async) appear, each linked to its session
+    assert {e["kind"] for e in today["events"]} >= {"class", "async"}
+    assert all(e["session_id"] for e in today["events"])
+    c.close()
+
+
+def test_name_suffix_cleaned():
+    from app.services.accounts import normalize_suffix
+    assert [normalize_suffix(x) for x in ("Jr.....", "jr", "Sr.", "iii", "IV.", "", None)] ==         ["Jr.", "Jr.", "Sr.", "III", "IV", "", ""]
 
 
 def test_create_subject_and_section(app, client):
@@ -128,7 +149,7 @@ def test_edit_schedule_from_menu(app, client):
 def test_delete_subject(client):
     prof(client)
     post(client, "/instructor/subjects/1/delete")
-    assert b"No subjects yet" in get(client, "/instructor/").data
+    assert b"No subjects yet" in get(client, "/instructor/subjects").data
     assert get(client, "/instructor/subjects/1").status_code == 404
 
 

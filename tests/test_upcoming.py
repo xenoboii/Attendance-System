@@ -66,10 +66,12 @@ def test_dashboard_today_grouped(app, client):
     c.commit()
     login(client, "prof", "prof123", PROF_SITE)
     page = client.get("/instructor/", base_url=PROF_SITE).data.decode()
-    # demo class started a minute ago -> Current; 23:58 -> Upcoming; async -> Ended
-    for label in ("Current", "Upcoming", "Ended"):
-        assert f'</i> {label}' in page, label
-    assert page.index("</i> Current") < page.index("</i> Upcoming") < page.index("</i> Ended")
+    # the class open right now is the banner at the top
+    assert "Live now" in page and "Open session" in page
+    # today's list (calendar day panel), by time: demo class started a minute ago -> open,
+    # 23:58 -> Upcoming, the async activity (no time) -> Ended, each with its status chip
+    today = page.split('aria-label="Classes on the selected day"')[1].split("</section>")[0]
+    assert today.index("Open · Present") < today.index("Upcoming") < today.index("Ended")
 
 
 def test_student_dashboard_schedule_is_a_list(app, client):

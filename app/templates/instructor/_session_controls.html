@@ -5,7 +5,7 @@
 {% set ended = s.ended_at or phase == 'ended' %}
 {% if s.type == 'async' %}
 {# Async: no check-in. Unmarked students received Present when the activity was assigned. #}
-<div class="card mb-3"><div class="card-body">
+<div class="card mb-3 session-async-card"><div class="card-body">
   <div class="card-title-sm"><i class="bi bi-house-door"></i> Async activity</div>
   <div class="d-flex align-items-start gap-2 mb-2">
     <span class="stat-icon ok"><i class="bi bi-people-fill"></i></span>
@@ -15,9 +15,17 @@
   </div>
   <p class="small text-muted mb-0">Use the <b>P · L · A · E</b> buttons to change anyone — for example <b>A</b> if they didn't submit,
     or <b>E</b> for excused. Students who join the section later aren't included; mark them by hand.</p>
+  {# undo "Async activity…": the dialog (time inputs) is in session.html #}
+  {% if not s.subject_ended_at %}
+  <div class="session-reset">
+    <button type="button" class="btn btn-sm btn-light w-100 btn-icon justify-content-center"
+            data-bs-toggle="modal" data-bs-target="#back-to-regular-modal">
+      <i class="bi bi-arrow-counterclockwise"></i> Back to regular class…</button>
+  </div>
+  {% endif %}
 </div></div>
 {% else %}
-<div class="card mb-3"><div class="card-body">
+<div class="card mb-3 session-control-card"><div class="card-body">
   <div class="card-title-sm"><i class="bi bi-toggles"></i> Check-in control</div>
 
   {% if ended %}
@@ -43,21 +51,20 @@
       {% if phase == 'checkout' %}
         {% set checked_in = rows|selectattr('record_status', 'in', ['present', 'late'])|list %}
         {% set checked_out = checked_in|selectattr('checked_out_at')|list %}
-        <div class="alert alert-info py-2 mb-1 justify-content-center"><span class="dot pulse"></span>
-          <span>Check-out open · <b>{{ checked_out|length }} of {{ checked_in|length }}</b> out</span></div>
+        {# status itself is at the top of the page; here only the progress #}
+        <p class="session-control-note"><i class="bi bi-box-arrow-right"></i>
+          <span><b>{{ checked_out|length }} of {{ checked_in|length }}</b> checked out</span></p>
         <button name="choice" value="present" class="btn btn-light btn-icon justify-content-center">
           <i class="bi bi-arrow-left-circle"></i> Back to check-in</button>
       {% elif phase == 'present' %}
-        <div class="alert alert-success py-2 mb-1 justify-content-center"><span class="dot pulse"></span><span>Open · <b>Present</b></span></div>
         <button name="choice" value="late" class="btn btn-warning btn-icon justify-content-center">
           <i class="bi bi-alarm"></i> Switch to Late</button>
       {% elif phase == 'late' %}
-        <div class="alert alert-warning py-2 mb-1 justify-content-center"><span class="dot pulse"></span><span>Open · <b>Late</b></span></div>
         <button name="choice" value="present" class="btn btn-light btn-icon justify-content-center">
           <i class="bi bi-arrow-left-circle"></i> Back to Present</button>
       {% else %}
-        <div class="alert alert-info py-2 mb-1 justify-content-center text-center"><i class="bi bi-hourglass"></i>
-          <span>{% if s.checkin_mode == 'auto' and info.window %}Opens automatically at {{ info.window.opens_at.strftime('%I:%M %p').lstrip('0') }}{% else %}Check-in is not open{% endif %}</span></div>
+        <p class="session-control-note"><i class="bi bi-hourglass"></i>
+          <span>{% if s.checkin_mode == 'auto' and info.window %}Opens automatically at {{ info.window.opens_at.strftime('%I:%M %p').lstrip('0') }}{% else %}Check-in is not open yet{% endif %}</span></p>
         <button name="choice" value="present" class="btn btn-primary btn-icon justify-content-center">
           <i class="bi bi-play-fill"></i> Open now · Present</button>
         <button name="choice" value="late" class="btn btn-light btn-icon justify-content-center">
@@ -87,6 +94,19 @@
               data-bs-toggle="modal" data-bs-target="#async-day-modal">
         <i class="bi bi-house-door"></i> Async activity…</button>
     {% endif %}
+  {% endif %}
+
+  {# undo a mistake (ended too early, wrong button ...): everyone back to "—", session not opened yet.
+     Only when there is something to undo. #}
+  {% set has_marks = rows|selectattr('record_status')|list %}
+  {% if has_marks or s.opened_at or s.ended_at %}
+    <form method="post" action="{{ url_for('instructor.session_reset', session_id=s.id) }}" class="session-reset"
+          data-confirm="Reset every student's status for this class date back to “—”? This clears ALL marks and check-ins for this date (ID taps, web check-ins and your P · L · A · E marks), and check-in goes back to not opened. Use it to undo a mistake."
+          data-confirm-title="Reset statuses" data-confirm-ok="Reset statuses" data-confirm-icon="arrow-counterclockwise">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-ghost-danger w-100 btn-icon justify-content-center">
+        <i class="bi bi-arrow-counterclockwise"></i> Reset statuses…</button>
+    </form>
   {% endif %}
 </div></div>
 

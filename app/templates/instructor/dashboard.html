@@ -1,5 +1,7 @@
 {% extends "base.html" %}
-{% block title %}My subjects{% endblock %}
+{% block title %}Dashboard{% endblock %}
+{# same layout as the student dashboard: banner + numbers on top, calendar + the picked day's classes below #}
+{% block body_class %}page-student-dashboard page-instructor-dashboard{% endblock %}
 {% block content %}
 <div class="page-header">
   <div>
@@ -7,120 +9,123 @@
       {% if current_user.title %}{{ current_user.title }} {{ current_user.last_name }}{% else %}{{ current_user.first_name }}{% endif %}!</h1>
     <div class="sub">{{ now.strftime('%A, %B %d, %Y').replace(' 0', ' ') }}</div>
   </div>
-  <div class="actions">
-    <a class="btn btn-primary btn-icon" href="{{ url_for('instructor.subject_new') }}"><i class="bi bi-plus-lg"></i> New subject</a>
+</div>
+
+{% set live_label = {'present': 'Check-in open · Present', 'late': 'Check-in open · Late', 'checkout': 'Check-out open'} %}
+{% set live_icon = {'present': 'broadcast', 'late': 'hourglass-split', 'checkout': 'box-arrow-right'} %}
+<div class="cq cq-main-wide mb-3 student-dashboard-summary" style="align-items: stretch">
+  <!-- banner: the class that's open right now, or "no class open" (same card as the student's check-in card) -->
+  <div>
+    {% if live %}
+      {% set t = live[0] %}{% set done = t.counts.present + t.counts.late %}
+      <div class="card checkin-hero h-100 {{ t.phase }}">
+        <div class="card-body d-flex flex-column">
+          <div class="state"><i class="bi bi-{{ live_icon[t.phase] }}"></i> Live now · {{ live_label[t.phase] }}</div>
+          <div class="headline">{{ t.subject_code }} · {{ t.section_name }}</div>
+          <div class="msg">{% if t.start_time %}{{ t.start_time|time12 }}{% if t.end_time %} – {{ t.end_time|time12 }}{% endif %} · {% endif %}<b>{{ done }} of {{ t.counts.total }}</b> checked in</div>
+          <div class="live-progress mb-3" role="progressbar" aria-label="Checked in" aria-valuemin="0"
+               aria-valuemax="{{ t.counts.total }}" aria-valuenow="{{ done }}">
+            <span style="width: {{ (100 * done / t.counts.total)|round|int if t.counts.total else 0 }}%"></span></div>
+          <div class="mt-auto d-flex flex-wrap align-items-center gap-2">
+            <a class="btn btn-checkin btn-icon" href="{{ url_for('instructor.session_page', session_id=t.id) }}">
+              <i class="bi bi-people"></i><span>Open session</span></a>
+            {% for other in live[1:] %}
+              <a class="small text-white opacity-75" href="{{ url_for('instructor.session_page', session_id=other.id) }}">
+                Also open: {{ other.subject_code }} · {{ other.section_name }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="card checkin-hero h-100 closed">
+        <div class="card-body d-flex flex-column">
+          <div class="state"><i class="bi bi-moon-stars"></i> Closed</div>
+          <div class="headline">No class open right now</div>
+          <div class="msg">{% if next_up %}Next today: <b>{{ next_up.subject_code }} · {{ next_up.section_name }}</b>{% if next_up.start_time %} at {{ next_up.start_time|time12 }}{% endif %}.
+            {% elif today %}No more classes today.{% else %}No classes today.{% endif %}</div>
+          {% if next_up %}
+          <div class="mt-auto">
+            <a class="btn btn-checkin btn-icon" href="{{ url_for('instructor.session_page', session_id=next_up.id) }}">
+              <i class="bi bi-arrow-right-circle"></i><span>Go to next class</span></a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- numbers -->
+  <div>
+    <div class="cq cq-tiles h-100">
+      {% for icon, cls, value, label in [('journal-bookmark', '', stats.subjects, 'Subjects'),
+                                         ('collection', 'info', stats.sections, 'Sections'),
+                                         ('people', 'ok', stats.students, 'Students'),
+                                         ('calendar-event', 'warn', today|length, 'Classes today')] %}
+        <div class="card stat h-100"><div class="stat-icon {{ cls }}"><i class="bi bi-{{ icon }}"></i></div>
+          <div class="min-w-0"><div class="value">{{ value }}</div><div class="label">{{ label }}</div></div></div>
+      {% endfor %}
+    </div>
   </div>
 </div>
 
-{# A class with check-in open right now goes first, big, with one button to manage it:
-   it's the thing the instructor needs during class. #}
-{% set live_label = {'present': 'Check-in open · Present', 'late': 'Check-in open · Late', 'checkout': 'Check-out open'} %}
-{% for t in today if t.phase in ('present', 'late', 'checkout') %}
-  {% set done = t.counts.present + t.counts.late %}
-  <a class="card checkin-hero live-hero mb-3 {{ t.phase }}" href="{{ url_for('instructor.session_page', session_id=t.id) }}">
-    <div class="card-body">
-      <div class="live-hero-main">
-        <div class="state"><span class="dot pulse"></span> Live now · {{ live_label[t.phase] }}</div>
-        <div class="headline">{{ t.subject_code }} · {{ t.section_name }}</div>
-        <div class="msg mb-2">{% if t.start_time %}{{ t.start_time|time12 }}{% if t.end_time %} – {{ t.end_time|time12 }}{% endif %} · {% endif %}<b>{{ done }} of {{ t.counts.total }}</b> checked in</div>
-        <div class="live-progress" role="progressbar" aria-label="Checked in" aria-valuemin="0"
-             aria-valuemax="{{ t.counts.total }}" aria-valuenow="{{ done }}">
-          <span style="width: {{ (100 * done / t.counts.total)|round|int if t.counts.total else 0 }}%"></span></div>
+{# today's sessions by id: status chip + check-in count on today's classes #}
+{% set today_by_id = {} %}{% for t in today %}{% set _ = today_by_id.update({t.id: t}) %}{% endfor %}
+{% set phase_chip = {'present': ('chip-ok', 'Open · Present'), 'late': ('chip-warn', 'Open · Late'),
+                     'checkout': ('chip-info', 'Check-out open'), 'ended': ('chip-muted', 'Ended'),
+                     'upcoming': ('chip-info', 'Upcoming'), 'paused': ('chip-muted', 'Paused')} %}
+<div class="cq cq-2 student-dashboard-lists" style="align-items: stretch">
+  {# calendar on the left, the picked day's classes on the right (today when the page opens) #}
+  <div>{% with cal_endpoint = 'instructor.dashboard' %}{% include "student/_calendar.html" %}{% endwith %}</div>
+
+  <div>
+    <div class="card student-dashboard-panel"><div class="card-body">
+      <div class="classes-head">
+        <div class="card-title-sm mb-0"><i class="bi bi-calendar-day"></i> <span data-cal-title>{{ cal.selected_title }}</span></div>
+        <a class="btn btn-sm btn-light btn-icon" href="{{ url_for('instructor.subjects_page') }}"><i class="bi bi-journal-bookmark"></i> My subjects</a>
       </div>
-      <span class="btn btn-checkin btn-icon">Open session <i class="bi bi-arrow-right"></i></span>
-    </div>
-  </a>
-{% endfor %}
-
-<div class="cq cq-tiles mb-3">
-  {% for icon, cls, value, label in [('journal-bookmark', '', stats.subjects, 'Subjects'),
-                                     ('collection', 'info', stats.sections, 'Sections'),
-                                     ('people', 'ok', stats.students, 'Students'),
-                                     ('calendar-event', 'warn', today|length, 'Classes today')] %}
-    <div class="card stat h-100"><div class="stat-icon {{ cls }}"><i class="bi bi-{{ icon }}"></i></div>
-      <div class="min-w-0"><div class="value">{{ value }}</div><div class="label">{{ label }}</div></div></div>
-  {% endfor %}
-</div>
-
-{# Two separate panels with the SAME fixed height. Each item keeps its own natural height
-   (nothing stretches to match the other side); extra items scroll inside the panel.
-   When the content area is narrow they stack, with Today's classes first. #}
-<div class="cq cq-2">
-  <section class="card panel">
-    <div class="panel-head">
-      <div class="card-title-sm mb-0"><i class="bi bi-journal-bookmark"></i> My subjects
-        <span class="chip chip-brand ms-1">{{ subjects|length }}</span></div>
-    </div>
-    <div class="panel-body">
-      {% for s in subjects %}
-        <a class="card card-lift subject-card panel-item" href="{{ url_for('instructor.subject', subject_id=s.id) }}">
-          <div class="top"></div>
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-              <span class="subject-code">{{ s.code }}</span>
-              <span class="chip chip-muted">{{ s.school_year }} · {{ s.semester }}</span>
-            </div>
-            <h2 class="h6 fw-semibold mb-2 text-truncate">{{ s.title }}</h2>
-            <div class="meta">
-              <span><i class="bi bi-collection"></i>{{ s.section_count }} section{{ '' if s.section_count == 1 else 's' }}</span>
-              <span><i class="bi bi-people"></i>{{ s.student_count }} student{{ '' if s.student_count == 1 else 's' }}</span>
-            </div>
-          </div>
-        </a>
-      {% else %}
-        <div class="empty">
-          <i class="bi bi-journal-plus"></i><h3>No subjects yet</h3>
-          <p>Create a subject, add sections, then enroll your students.</p>
-          <a class="btn btn-primary" href="{{ url_for('instructor.subject_new') }}">Create your first subject</a>
+      <div class="student-dashboard-scroll" role="region" aria-label="Classes on the selected day" tabindex="0" aria-live="polite">
+      {% for week in cal.weeks %}{% for d in week %}
+        <div data-cal-detail="{{ d.iso }}" data-title="{{ d.title }}" {% if d.iso != cal.selected %}hidden{% endif %}>
+          {% for i in d.events %}
+            {% set live_t = today_by_id.get(i.session_id) if i.session_id else None %}
+            {% set tag = 'a' if i.session_id else 'div' %}
+            <{{ tag }} class="sched-item {{ i.kind }}{{ ' sched-link' if i.session_id }}"
+               {% if i.session_id %}href="{{ url_for('instructor.session_page', session_id=i.session_id) }}"{% endif %}>
+              <div class="sched-time">{% if i.start_time %}{{ i.start_time|time12 }}{% if i.end_time %}<small>until {{ i.end_time|time12 }}</small>{% endif %}{% elif i.kind == 'async' %}Any time<small>that day</small>{% else %}—{% endif %}</div>
+              <div class="sched-bar"></div>
+              <div class="min-w-0 flex-grow-1">
+                <div class="fw-semibold sched-name">{{ i.code }} · {{ i.section_name }}</div>
+                <div class="small text-muted">{{ i.title }}{% if i.room %} · <i class="bi bi-geo-alt"></i> {{ i.room }}{% endif %}
+                  {% if i.kind == 'makeup' %} · Make-up class{% elif i.kind == 'async' %} · Async activity{% if i.session_title %}: {{ i.session_title }}{% endif %}{% endif %}</div>
+                {% if i.kind == 'no_class' %}<span class="chip chip-bad mt-1"><i class="bi bi-calendar-x"></i> No class — {{ i.reason }}</span>{% endif %}
+                {% if live_t %}{% set pc = phase_chip[live_t.phase] %}
+                  <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                    <span class="chip {{ pc[0] }} text-nowrap">{% if live_t.phase in ('present','late','checkout') %}<span class="dot pulse"></span>{% endif %}{{ pc[1] }}</span>
+                    <span class="small text-muted text-nowrap"><i class="bi bi-people"></i> {{ live_t.counts.present + live_t.counts.late }}/{{ live_t.counts.total }} checked in</span>
+                  </div>
+                {% endif %}
+              </div>
+              {% if i.session_id %}<i class="bi bi-chevron-right text-muted"></i>{% endif %}
+            </{{ tag }}>
+          {% else %}
+            <div class="empty py-4"><i class="bi bi-cup-hot"></i><h3>No classes {{ 'today' if d.is_today else 'on this day' }}</h3>
+              <p class="mb-0">{{ 'Classes appear here from each section\'s weekly schedule.' if d.is_today else 'Nothing is scheduled.' }}</p></div>
+          {% endfor %}
         </div>
-      {% endfor %}
-    </div>
-  </section>
-
-  <section class="card panel narrow-first">
-    <div class="panel-head">
-      <div class="card-title-sm mb-0"><i class="bi bi-calendar-day"></i> Today's classes
-        <span class="chip chip-brand ms-1">{{ today|length }}</span></div>
-    </div>
-    {% set phase_chip = {'present': ('chip-ok', 'Open · Present'), 'late': ('chip-warn', 'Open · Late'),
-                         'checkout': ('chip-info', 'Check-out open'),
-                         'ended': ('chip-muted', 'Ended'), 'upcoming': ('chip-info', 'Upcoming'), 'paused': ('chip-muted', 'Paused')} %}
-    {% macro class_card(t) %}
-      <a class="card card-lift subject-card panel-item {{ 'is-ended' if t.phase == 'ended' }}" href="{{ url_for('instructor.session_page', session_id=t.id) }}">
-        <div class="top"></div>
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="sched-time">{{ t.start_time|time12 if t.start_time else 'Async' }}<small>{% if t.end_time %}until {{ t.end_time|time12 }}{% else %}&nbsp;{% endif %}</small></div>
-          <div class="sched-bar"></div>
-          <div class="min-w-0 flex-grow-1">
-            <div class="d-flex align-items-center gap-2 mb-1 min-w-0">
-              <span class="subject-code">{{ t.subject_code }}</span>
-              <span class="fw-semibold text-truncate">{{ t.section_name }}</span>
-            </div>
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              {% set pc = phase_chip[t.phase] %}<span class="chip {{ pc[0] }} text-nowrap">{% if t.phase in ('present','late','checkout') %}<span class="dot pulse"></span>{% endif %}{{ pc[1] }}</span>
-              <span class="small text-muted text-nowrap"><i class="bi bi-people"></i> {{ t.counts.present + t.counts.late }}/{{ t.counts.total }} checked in</span>
-            </div>
-          </div>
-          <i class="bi bi-chevron-right text-muted"></i>
-        </div>
-      </a>
-    {% endmacro %}
-    {# three groups so nothing is mixed: Current (check-in open) -> Upcoming -> Ended #}
-    {% set groups = [('Current', 'broadcast', 'text-success', today|selectattr('phase', 'in', ['present', 'late', 'checkout'])|list),
-                     ('Upcoming', 'hourglass-split', 'text-info', today|selectattr('phase', 'in', ['upcoming', 'paused'])|list),
-                     ('Ended', 'flag', 'text-muted', today|selectattr('phase', 'equalto', 'ended')|list)] %}
-    <div class="panel-body">
-      {% if today %}
-        {% for label, icon, color, items in groups if items %}
-          <div class="panel-group-label {{ color }}"><i class="bi bi-{{ icon }}"></i> {{ label }}
-            <span class="text-muted fw-normal">· {{ items|length }}</span></div>
-          {% for t in items %}{{ class_card(t) }}{% endfor %}
-        {% endfor %}
-      {% else %}
-        <div class="empty"><i class="bi bi-cup-hot"></i><h3>No classes today</h3>
-          <p class="mb-0">Classes appear here from each section's weekly schedule. Holding class anyway? Open the section and use “Add session”.</p></div>
-      {% endif %}
-    </div>
-  </section>
+      {% endfor %}{% endfor %}
+      </div>
+    </div></div>
+  </div>
 </div>
+<script>
+  // pick a day in the calendar -> the panel on the right shows that day's classes
+  document.querySelectorAll("[data-cal-day]").forEach((btn) => btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-cal-day].selected").forEach((b) => b.classList.remove("selected"));
+    btn.classList.add("selected");
+    document.querySelectorAll("[data-cal-detail]").forEach((el) => {
+      el.hidden = el.dataset.calDetail !== btn.dataset.calDay;
+      if (!el.hidden) document.querySelector("[data-cal-title]").textContent = el.dataset.title;
+    });
+  }));
+</script>
 {% endblock %}

@@ -5,7 +5,7 @@
 {% block body_class %}page-instructor-section section-view-{{ tab }}{% endblock %}
 {% block content %}
 <div class="crumbs">
-  <a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
+  <a href="{{ url_for('instructor.subjects_page') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
   <a href="{{ url_for('instructor.subject', subject_id=section.subject_id) }}">{{ section.subject_code }}</a><i class="bi bi-chevron-right small"></i>{{ section.name }}
 </div>
 <div class="page-header">
@@ -395,7 +395,7 @@
                 {% set info_url = url_for('instructor.student_info', section_id=section.id, student_id=st.id) %}
                 <tr data-href="{{ info_url }}">
                   <td>
-                    <a class="fw-semibold text-nowrap text-reset d-block" href="{{ info_url }}">{{ st.last_name }}, {{ st.first_name }}{% if st.middle_name %} {{ st.middle_name[0] }}.{% endif %}{% if st.suffix %} {{ st.suffix }}{% endif %}</a>
+                    <a class="fw-semibold text-nowrap text-reset d-block" href="{{ info_url }}">{{ st.last_name }}, {{ st.first_name }}{% if st.middle_name %} {{ st.middle_name[0] }}.{% endif %}{% if st.suffix %} {{ st.suffix|suffix }}{% endif %}</a>
                     {% set cs = st|course_section %}{% if cs %}<div class="small text-muted">{{ cs }}</div>{% endif %}
                   </td>
                   <td class="font-monospace small text-nowrap">{{ st.student_number }}</td>

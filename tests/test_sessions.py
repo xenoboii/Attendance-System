@@ -428,7 +428,7 @@ def test_set_upcoming_session_async_keeps_attendance_and_replaces_weekly_occurre
     assert [event["kind"] for event in events] == ["async"]
     assert all(row["date"] != day.isoformat() for row in sessions.upcoming_from_schedule(c, 1))
     rejected = client.post(url + "/async", base_url=PROF_SITE, data={"title": "Retry"}, follow_redirects=True)
-    assert b"Only upcoming sessions" in rejected.data
+    assert b"Only sessions that haven&#39;t ended" in rejected.data
     assert sessions.get_session(c, PROF, sid)["title"] == "Module reading"
     sessions.delete_session(c, PROF, sid)
     trash.restore(c, PROF, "session", sid)
@@ -440,7 +440,7 @@ def test_set_upcoming_session_async_keeps_attendance_and_replaces_weekly_occurre
 
     response = client.post(url + "/async/change", base_url=PROF_SITE,
                            data={"choice": "regular", "start_time": "08:00", "end_time": "09:00"}, follow_redirects=True)
-    assert b"Async activity changed." in response.data
+    assert b"Changed back to a regular class." in response.data
     s = sessions.get_session(c, PROF, sid)
     assert (s["type"], s["checkin_mode"], s["start_time"], s["ended_at"]) == ("regular", "auto", "08:00", None)
     marks = c.execute("SELECT student_id, status FROM attendance WHERE session_id = ?", (sid,)).fetchall()
@@ -470,3 +470,73 @@ def test_student_class_page(app, client):
     assert r.status_code == 200 and b"Attendance rate" in r.data and b"Attendance history" in r.data
     assert b"absent" in client.get("/student/classes").data                  # My classes chip
     assert client.get("/student/classes/999").status_code == 404
+
+
+# ---------------------------------------------------------------- reset statuses (undo a mistake)
+def _status(conn, sid, now):
+    s = sessions.get_session(conn, PROF, sid)
+    return {r["id"]: r["status"] for r in sessions.roster(conn, s, now)}
+
+
+def test_reset_statuses_undoes_an_early_end(conn):
+    attendance.web_check_in(conn, MARIA, now=at("07:02"))
+    sessions.mark(conn, PROF, 1, JOSE, "late", at("07:03"))
+    sessions.end_session(conn, PROF, 1, at("07:05"))                 # pressed too early
+    assert _status(conn, 1, at("07:06"))[ANA] == "absent"
+
+    assert sessions.reset_session(conn, PROF, 1, at("07:06")) == 2
+    s = sessions.get_session(conn, PROF, 1)
+    assert (s["ended_at"], s["opened_at"], s["checkin_mode"], s["manual_state"]) == (None, None, "manual", "disabled")
+    assert set(_status(conn, 1, at("07:06")).values()) == {"pending"}     # everyone "—" again
+    assert sessions.describe(s, at("07:06"))["phase"] == "upcoming"
+
+    # open again: a student checks in with a clean record (no leftover check-out time or note)
+    sessions.set_state(conn, PROF, 1, "present", at("07:07"))
+    assert attendance.web_check_in(conn, MARIA, now=at("07:08"))["result"] == "present"
+    row = conn.execute("SELECT status, checked_out_at, note, deleted_at FROM attendance "
+                       "WHERE session_id = 1 AND student_id = ?", (MARIA,)).fetchone()
+    assert tuple(row) == ("present", None, None, None)
+
+
+def test_reset_leaves_async_activities_alone(conn):
+    sid = conn.execute("SELECT id FROM class_sessions WHERE type = 'async'").fetchone()[0]
+    before = conn.execute("SELECT COUNT(*) FROM attendance WHERE session_id = ? AND deleted_at IS NULL", (sid,)).fetchone()[0]
+    assert sessions.reset_session(conn, PROF, sid, at("08:00")) == 0
+    assert conn.execute("SELECT COUNT(*) FROM attendance WHERE session_id = ? AND deleted_at IS NULL",
+                        (sid,)).fetchone()[0] == before
+
+
+def test_reopened_past_class_shows_not_yet_while_open(conn):
+    later = T0 + timedelta(days=2)                                   # the demo class date has passed
+    assert _status(conn, 1, later)[ANA] == "absent"
+    sessions.set_state(conn, PROF, 1, "present", later)              # reopened to fix it
+    assert _status(conn, 1, later)[ANA] == "pending"                 # "—" while check-in is open
+    sessions.end_session(conn, PROF, 1, later)
+    assert _status(conn, 1, later)[ANA] == "absent"
+
+
+def test_async_offered_until_the_session_ends(conn):
+    s = lambda: sessions.get_session(conn, PROF, 1)                  # noqa: E731
+    sessions.set_state(conn, PROF, 1, "present", at("07:02"))
+    assert sessions.can_set_async(s(), at("07:02"))                 # open: still possible
+    sessions.end_session(conn, PROF, 1, at("07:30"))
+    assert not sessions.can_set_async(s(), at("07:31"))              # ended: reset first
+
+
+def test_reset_route(app, client):
+    login(client, "prof", "prof123", PROF_SITE)
+    c = connect(app.config["DATABASE"])
+    sid = c.execute("SELECT id FROM class_sessions WHERE type <> 'async' ORDER BY id LIMIT 1").fetchone()[0]
+    sessions.end_session(c, PROF, sid)
+    controls = client.get(f"/instructor/sessions/{sid}/live?part=controls", base_url=PROF_SITE).data
+    assert b"Reset statuses" in controls
+    r = client.post(f"/instructor/sessions/{sid}/reset", base_url=PROF_SITE)
+    assert r.status_code == 302
+    assert sessions.get_session(c, PROF, sid)["ended_at"] is None
+    c.close()
+    # students can't reset anything
+    give_signature(app, MARIA)
+    student = app.test_client()
+    login(student, "2026-0001", "student123")
+    assert student.post(f"/instructor/sessions/{sid}/reset", base_url=PROF_SITE).status_code in (302, 403, 404)
+    assert student.post(f"/instructor/sessions/{sid}/reset", base_url=STUDENT_SITE).status_code in (302, 403, 404)

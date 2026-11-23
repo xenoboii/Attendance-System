@@ -145,6 +145,12 @@ def _register_filters(app: Flask) -> None:
             return ""
         return _dt.strptime(value[:5], "%H:%M").strftime("%I:%M %p").lstrip("0")
 
+    @app.template_filter("suffix")
+    def suffix_filter(value):
+        """'Jr.....' -> 'Jr.' (also fixes suffixes saved before they were cleaned on save)."""
+        from .services.accounts import normalize_suffix
+        return normalize_suffix(value)
+
     @app.template_filter("course_section")
     def course_section(st):
         """Student's program + year + section: 'BSCPE 4A' (or 'BSCPE 4', 'BSCPE', '')."""

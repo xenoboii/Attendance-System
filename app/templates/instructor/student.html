@@ -3,14 +3,14 @@
 {% block title %}{{ st.last_name }}, {{ st.first_name }}{% endblock %}
 {% block content %}
 <div class="crumbs">
-  <a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
+  <a href="{{ url_for('instructor.subjects_page') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
   <a href="{{ url_for('instructor.subject', subject_id=section.subject_id) }}">{{ section.subject_code }}</a><i class="bi bi-chevron-right small"></i>
   <a href="{{ url_for('instructor.section', section_id=section.id, tab='students') }}">{{ section.name }}</a><i class="bi bi-chevron-right small"></i>
   {{ st.last_name }}, {{ st.first_name }}
 </div>
 <div class="page-header">
   <div>
-    <h1>{{ st.last_name }}, {{ st.first_name }}{% if st.middle_name %} {{ st.middle_name }}{% endif %}{% if st.suffix %} {{ st.suffix }}{% endif %}</h1>
+    <h1>{{ st.last_name }}, {{ st.first_name }}{% if st.middle_name %} {{ st.middle_name }}{% endif %}{% if st.suffix %} {{ st.suffix|suffix }}{% endif %}</h1>
     <div class="meta mt-1">
       <span><i class="bi bi-person-vcard"></i><span class="font-monospace">{{ st.student_number }}</span></span>
       {% set cs = st|course_section %}{% if cs %}<span><i class="bi bi-mortarboard"></i>{{ cs }}</span>{% endif %}

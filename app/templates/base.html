@@ -36,7 +36,10 @@
         {{ nav('admin.backup_page', 'database-down', 'Backup & restore', ep in ('admin.backup_page', 'admin.backup_restore', 'admin.backup_download')) }}
         {{ nav('admin.device_page', 'router', 'Device settings', ep.startswith('admin.device')) }}
       {% else %}
-        {{ nav('instructor.dashboard', 'journal-bookmark', 'My subjects', ep.startswith('instructor.') and not ep.startswith('instructor.trash') and ep != 'instructor.archive_page') }}
+        {{ nav('instructor.dashboard', 'grid-1x2', 'Dashboard', ep == 'instructor.dashboard') }}
+        {{ nav('instructor.subjects_page', 'journal-bookmark', 'My subjects',
+               ep.startswith('instructor.') and ep != 'instructor.dashboard'
+               and not ep.startswith('instructor.trash') and ep != 'instructor.archive_page') }}
       {% endif %}
       {# RFID card registration lives in My account; remind students who haven't registered one #}
       {{ nav('account.index', 'person-circle', 'My account', ep.startswith('account.') or ep == 'auth.signature',

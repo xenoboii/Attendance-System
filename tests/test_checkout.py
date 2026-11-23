@@ -137,7 +137,10 @@ def test_instructor_controls(app, client):
 
     client.post(f"/instructor/sessions/{sid}/checkout", data={"open": "1"}, base_url=site)
     html = client.get(f"/instructor/sessions/{sid}/live?part=controls", base_url=site).get_data(as_text=True)
-    assert "Check-out open" in html and "Back to check-in" in html
+    # the control card shows the check-out progress; the "Check-out open" status is shown once, at the top
+    assert "checked out" in html and "Back to check-in" in html
+    top = client.get(f"/instructor/sessions/{sid}/live", base_url=site).get_data(as_text=True)
+    assert "Check-out open" in top
     # every page that labels a session's phase must know the new "checkout" phase
     from app.db import connect as _c
     db = _c(app.config["DATABASE"])

@@ -4,7 +4,7 @@
 {% block body_class %}page-instructor-session{% endblock %}
 {% block content %}
 <div class="crumbs">
-  <a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
+  <a href="{{ url_for('instructor.subjects_page') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
   <a href="{{ url_for('instructor.section', section_id=s.section_id, tab='sessions') }}">{{ s.subject_code }} {{ s.section_name }}</a>
   <i class="bi bi-chevron-right small"></i>{{ s.session_date|nicedate }}
 </div>
@@ -56,6 +56,40 @@
 
 {% if s.type != 'async' and not s.subject_ended_at %}
   {{ async_activity_modal(url_for('instructor.session_set_async', session_id=s.id), s.subject_code, s.section_name, day=s.session_date, title=s.title) }}
+{% endif %}
+
+{# undo "Async activity…": back to a regular class with a class time #}
+{% if s.type == 'async' and not s.subject_ended_at %}
+<div class="modal fade" id="back-to-regular-modal" tabindex="-1" aria-labelledby="back-to-regular-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('instructor.session_change_async', session_id=s.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="choice" value="regular">
+      <input type="hidden" name="back" value="session">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="back-to-regular-title">Back to regular class</h2>
+          <div class="small text-muted">{{ s.subject_code }} · {{ s.section_name }} · {{ s.session_date|nicedate }}</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2">
+          <div class="col-6"><label class="form-label" for="back-start">Start time</label>
+            <input type="time" required class="form-control" name="start_time" id="back-start" value="{{ s.regular_start_time or '' }}"></div>
+          <div class="col-6"><label class="form-label" for="back-end">End time (optional)</label>
+            <input type="time" class="form-control" name="end_time" id="back-end" value="{{ s.regular_end_time or '' }}"></div>
+        </div>
+        <div class="form-text">The automatic “Present (async)” marks are removed; marks you set by hand stay.
+          If the class time has already passed, check-in starts as not opened, so open it when you're ready.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Change to regular</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endif %}
 
 <!-- pop-up: students in one group (opened by clicking a count tile) -->
@@ -148,22 +182,56 @@
     new MutationObserver(renderGroup).observe(live, { childList: true });   // live refresh while open
     // only touch the page when something actually changed (no flicker every 3 s)
     const last = new WeakMap();
+
+    // ---- roster search: hide rows that don't match the name / student number typed.
+    // Runs on every keystroke and again after each live refresh (the box is re-drawn then).
+    function applySearch() {
+      const box = live.querySelector("[data-roster-search]");
+      if (!box) return;
+      const q = box.value.trim().toLowerCase();
+      const words = q.split(/\s+/).filter(Boolean);
+      let shown = 0, total = 0;
+      live.querySelectorAll("tbody tr[data-search]").forEach((tr) => {
+        total++;
+        const hit = words.every((w) => tr.dataset.search.includes(w));
+        tr.hidden = !hit;
+        if (hit) shown++;
+      });
+      const none = live.querySelector("[data-roster-nomatch]");
+      if (none) none.hidden = shown > 0;
+      const count = live.querySelector("[data-roster-count]");
+      if (count) count.textContent = words.length ? `${shown} of ${total}` : "";
+    }
+    live.addEventListener("input", (e) => { if (e.target.matches("[data-roster-search]")) applySearch(); });
+
     function replaceContent(el, html) {
       const scroll = el.querySelector("[data-roster-scroll]");
       const position = scroll ? {top: scroll.scrollTop, left: scroll.scrollLeft} : null;
+      // keep what was typed in the search box (and the cursor, if it was in there)
+      const oldBox = el.querySelector("[data-roster-search]");
+      const search = oldBox ? { value: oldBox.value, focused: document.activeElement === oldBox,
+                                start: oldBox.selectionStart, end: oldBox.selectionEnd } : null;
       el.innerHTML = html;
       const updated = el.querySelector("[data-roster-scroll]");
       if (position && updated) {
         updated.scrollTop = position.top;
         updated.scrollLeft = position.left;
       }
+      const newBox = el.querySelector("[data-roster-search]");
+      if (search && newBox) {
+        newBox.value = search.value;
+        if (search.focused) { newBox.focus(); newBox.setSelectionRange(search.start, search.end); }
+      }
+      if (el === live) applySearch();
     }
     async function load(el) {
       const r = await fetch(el.dataset.url, { headers: { "X-Requested-With": "fetch" } });
       if (!r.ok) return;
       const html = await r.text();
       if (last.get(el) === html) return;
-      if (el.contains(document.activeElement) && document.activeElement !== document.body) return;  // don't yank focus
+      // don't yank focus from a button or dropdown - but typing in the search box is fine
+      const active = document.activeElement;
+      if (el.contains(active) && active !== document.body && !active.matches("[data-roster-search]")) return;
       replaceContent(el, html);
       last.set(el, html);
     }

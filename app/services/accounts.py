@@ -31,7 +31,26 @@ def _ts(dt=None):
 
 
 def _clean(form: dict, key: str) -> str:
-    return (form.get(key) or "").strip()
+    value = (form.get(key) or "").strip()
+    return normalize_suffix(value) if key == "suffix" else value
+
+
+# Name suffixes: "Jr", "jr.", "Jr....." -> "Jr."; "iii" / "III." -> "III". One dot for the
+# abbreviations, none for roman numerals; anything else is kept as typed (extra dots trimmed).
+_SUFFIX_ABBR = {"jr": "Jr.", "sr": "Sr."}
+_ROMAN = {"ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}
+
+
+def normalize_suffix(value) -> str:
+    v = (value or "").strip().rstrip(". ").strip()
+    if not v:
+        return ""
+    key = v.lower()
+    if key in _SUFFIX_ABBR:
+        return _SUFFIX_ABBR[key]
+    if key in _ROMAN:
+        return v.upper()
+    return v
 
 
 def _validate_common(form: dict, errors: dict) -> None:

@@ -101,6 +101,10 @@ def is_finished(session: dict, now: datetime) -> bool:
         return not start or now.strftime("%H:%M") >= start
     if session.get("ended_at"):
         return True
+    # check-in open by hand right now (e.g. an older class date reopened): not finished, so
+    # students without a record show "—" (not yet), not Absent, until it's closed again
+    if session["checkin_mode"] == "manual" and session.get("manual_state") in ("present", "late"):
+        return False
     if session["session_date"] < today:
         return True
     if session["session_date"] > today:
@@ -144,8 +148,11 @@ def describe(session: dict, now: datetime) -> dict:
 
 
 def can_set_async(session, now):
+    """'Async activity…' is offered until the session ends (also while check-in is open: whoever
+    already checked in keeps their status, everyone else is marked present). Not during
+    check-out or after the end - Reset statuses first if the class should become async."""
     return (session["type"] != "async" and not session.get("subject_ended_at")
-            and describe(session, now)["phase"] == "upcoming")
+            and describe(session, now)["phase"] in ("upcoming", "present", "late", "paused"))
 
 
 def _counts_for_session(conn, session, now):
@@ -416,7 +423,7 @@ def set_async(conn, instructor_id, session_id, title, now=None):
         now = now or datetime.now()
         session = get_session(conn, instructor_id, session_id)
         if session is None or not can_set_async(session, now):
-            raise ValidationError({"session": "Only upcoming sessions can be changed to async."})
+            raise ValidationError({"session": "Only sessions that haven't ended can be changed to async."})
         conn.execute(
             """UPDATE class_sessions SET type = 'async', title = ?,
                                         checkin_mode = 'manual', manual_state = 'disabled', checkin_code = NULL
@@ -426,7 +433,8 @@ def set_async(conn, instructor_id, session_id, title, now=None):
 
 
 def change_upcoming_async(conn, instructor_id, session_id, form, now=None):
-    """Switch a scheduled async activity to Regular or cancel its class date."""
+    """Switch an async activity back to Regular (any time - it undoes "Async activity…"), or
+    cancel an UPCOMING async activity's class date (holiday, suspended classes ...)."""
     from . import classes
 
     choice = form.get("choice")
@@ -437,9 +445,10 @@ def change_upcoming_async(conn, instructor_id, session_id, form, now=None):
         conn.execute("BEGIN IMMEDIATE")
         now = now or datetime.now()
         session = get_session(conn, instructor_id, session_id)
-        if (session is None or session["type"] != "async" or session["subject_ended_at"]
-                or is_finished(session, now)):
-            raise ValidationError({"session": "Only upcoming async activities can be changed."})
+        if session is None or session["type"] != "async" or session["subject_ended_at"]:
+            raise ValidationError({"session": "Only async activities can be changed back."})
+        if choice != "regular" and is_finished(session, now):
+            raise ValidationError({"session": "Only upcoming async activities can be cancelled."})
 
         day = session["session_date"]
         section_id = session["section_id"]
@@ -450,10 +459,15 @@ def change_upcoming_async(conn, instructor_id, session_id, form, now=None):
                 raise ValidationError({"start_time": "Enter the start time for the regular session."})
             if end and (not TIME_RE.fullmatch(end) or end <= start):
                 raise ValidationError({"end_time": "End time must be after the start time."})
+            # class time still ahead: automatic as usual. Already passed: "not opened yet" (manual),
+            # so nobody turns Absent the moment it's changed back - open check-in when ready.
+            ahead = (day > now.strftime("%Y-%m-%d")
+                     or (day == now.strftime("%Y-%m-%d") and start > now.strftime("%H:%M")))
             conn.execute(
                 """UPDATE class_sessions SET type = 'regular', start_time = ?, end_time = ?,
-                                              opened_at = NULL, ended_at = NULL, checkin_mode = 'auto'
-                   WHERE id = ?""", (start, end, session_id))
+                                              opened_at = NULL, ended_at = NULL, checkin_mode = ?,
+                                              manual_state = 'disabled'
+                   WHERE id = ?""", (start, end, "auto" if ahead else "manual", session_id))
             conn.execute("DELETE FROM attendance WHERE session_id = ? AND note = 'async'", (session_id,))
         else:
             conn.execute("UPDATE class_sessions SET deleted_at = ? WHERE id = ?", (_ts(now), session_id))
@@ -520,6 +534,32 @@ def end_session(conn, user_id, session_id, now=None) -> None:
     conn.commit()
     log.info("session=%s ended by user=%s", session_id, user_id)
     apply_checkout_rule(conn, session_id, user_id, now)
+
+
+def reset_session(conn, user_id, session_id, now=None) -> int:
+    """'Reset statuses': undo a mistake (ended too early, wrong button ...). Every mark and
+    check-in of this class date is cleared, so every student shows "—" again, and the session goes
+    back to "not opened yet" (manual) so the instructor can open check-in again.
+    Records are soft-deleted (deleted_at): a student who checks in again gets a clean record.
+    Async activities are not reset (their Present marks are the whole point).
+    Returns how many records were cleared."""
+    now = now or datetime.now()
+    with conn:
+        conn.execute("BEGIN IMMEDIATE")
+        s = conn.execute("SELECT type FROM class_sessions WHERE id = ? AND deleted_at IS NULL",
+                         (session_id,)).fetchone()
+        if s is None or s["type"] == "async":
+            return 0
+        cleared = conn.execute(
+            """UPDATE attendance SET deleted_at = ?, checked_out_at = NULL, note = NULL
+               WHERE session_id = ? AND deleted_at IS NULL""", (_ts(now), session_id)).rowcount
+        conn.execute("""UPDATE class_sessions SET checkin_mode = 'manual', manual_state = 'disabled',
+                          opened_at = NULL, ended_at = NULL, checkout_open_at = NULL, checkout_done_at = NULL
+                        WHERE id = ?""", (session_id,))
+        _log_change(conn, session_id, user_id, "manual", "reset")
+        _audit(conn, user_id, "reset_session", session_id, {"records_cleared": cleared})
+    log.info("session=%s reset by user=%s (%s records cleared)", session_id, user_id, cleared)
+    return cleared
 
 
 # ================================================================ check-out

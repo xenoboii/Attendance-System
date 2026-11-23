@@ -40,13 +40,23 @@
 
 <div class="card table-card session-roster-card">
   {% if rows %}
+  {# find a student fast in a big class (filtering is in session.html, survives the live refresh) #}
+  {% if rows|length > 5 %}
+  <div class="roster-search">
+    <i class="bi bi-search" aria-hidden="true"></i>
+    <input type="search" class="form-control" placeholder="Search name or student no." aria-label="Search students"
+           autocomplete="off" data-roster-search>
+    <span class="small text-muted" data-roster-count aria-live="polite"></span>
+  </div>
+  {% endif %}
   <div class="table-responsive session-roster-scroll" data-roster-scroll role="region" aria-label="Student attendance list" tabindex="0">
     <table class="table table-modern">
       <thead><tr><th>Student</th><th>Status</th><th>Time</th><th>How</th><th class="text-end">Mark</th></tr></thead>
       <tbody>
         {% set status_chip = {'present': 'chip-ok', 'late': 'chip-warn', 'absent': 'chip-bad', 'excused': 'chip-info', 'pending': 'chip-muted'} %}
         {% for r in rows %}
-          <tr data-status="{{ r.status }}">
+          <tr data-status="{{ r.status }}"
+              data-search="{{ (r.last_name ~ ' ' ~ r.first_name ~ ' ' ~ (r.middle_name or '') ~ ' ' ~ r.first_name ~ ' ' ~ r.last_name ~ ' ' ~ r.student_number)|lower }}">
             <td><div class="fw-semibold text-nowrap">{{ r.last_name }}, {{ r.first_name }}{% if r.middle_name %} {{ r.middle_name[0] }}.{% endif %}</div>
                 <div class="small text-muted font-monospace">{{ r.student_number }}</div></td>
             {# no record yet: just "—" until the class ends (then Absent, unless they joined after it) #}
@@ -74,6 +84,7 @@
         {% endfor %}
       </tbody>
     </table>
+    <p class="text-center text-muted small py-3 mb-0" data-roster-nomatch hidden>No students match.</p>
   </div>
   {% else %}
     <div class="empty"><i class="bi bi-people"></i><h3>No students enrolled</h3><p class="mb-0">Add students in the Students tab.</p></div>

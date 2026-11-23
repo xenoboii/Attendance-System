@@ -3,7 +3,7 @@
 {% block title %}{{ subject.code }}{% endblock %}
 {% block body_class %}page-instructor-subject{% endblock %}
 {% block content %}
-<div class="crumbs"><a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>{{ subject.code }}</div>
+<div class="crumbs"><a href="{{ url_for('instructor.subjects_page') }}">My subjects</a><i class="bi bi-chevron-right small"></i>{{ subject.code }}</div>
 <div class="page-header">
   <div>
     <h1>{{ subject.title }}</h1>

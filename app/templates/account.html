@@ -19,7 +19,7 @@
     </div>
     <div class="me-auto pb-1">
       <h1>{% if current_user.title %}{{ current_user.title }} {% endif %}{{ current_user.first_name }}
-        {% if current_user.middle_name %}{{ current_user.middle_name[0] }}. {% endif %}{{ current_user.last_name }}{% if current_user.suffix %} {{ current_user.suffix }}{% endif %}</h1>
+        {% if current_user.middle_name %}{{ current_user.middle_name[0] }}. {% endif %}{{ current_user.last_name }}{% if current_user.suffix %} {{ current_user.suffix|suffix }}{% endif %}</h1>
       <div class="meta mt-1">
         {% if is_student %}
           <span><i class="bi bi-person-vcard"></i><span class="font-monospace">{{ current_user.student_number }}</span></span>
@@ -132,7 +132,7 @@
           <div class="row g-2">
             <div class="col-sm-7 mb-3">
               <label class="form-label">Full name</label>
-              <input class="form-control" disabled value="{{ current_user.last_name }}, {{ current_user.first_name }}{% if current_user.middle_name %} {{ current_user.middle_name }}{% endif %}{% if current_user.suffix %} {{ current_user.suffix }}{% endif %}">
+              <input class="form-control" disabled value="{{ current_user.last_name }}, {{ current_user.first_name }}{% if current_user.middle_name %} {{ current_user.middle_name }}{% endif %}{% if current_user.suffix %} {{ current_user.suffix|suffix }}{% endif %}">
             </div>
             <div class="col-sm-5 mb-3">
               <label class="form-label">Student number</label>
