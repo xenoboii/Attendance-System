@@ -16,6 +16,9 @@ app/static/fonts/OLDENGL.TTF
 # local editor / assistant settings (paths on one PC only)
 .claude/
 
+# archives (project copies / backups may contain the database or other private files)
+*.zip
+
 # OS clutter
 Thumbs.db
 desktop.ini
