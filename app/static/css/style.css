@@ -362,7 +362,11 @@ a:hover { color: var(--brand-600); }
 .group-row .num { width: 1.4rem; text-align: right; }
 #group-modal .modal-body { max-height: 60vh; }
 .stat .value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; }
-.stat .label { font-size: .8rem; color: var(--muted); }
+.stat .label { font-size: .8rem; color: var(--muted); overflow-wrap: normal; word-break: normal; }
+/* a tile too narrow for icon + text side by side puts the text under the icon instead of
+   squeezing it until words break ("Instructor / s") */
+.stat { flex-wrap: wrap; }
+.stat > .min-w-0, .stat > .text-start { flex: 1 1 5.5rem; }
 
 /* ---------------------------------------------------------------- badges / pills */
 .chip { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .6rem; border-radius: 99px; font-size: .75rem; font-weight: 600; }
@@ -1215,3 +1219,16 @@ html[data-text-size="large"] { font-size: 17.5px; }
 /* "None" swatch: neutral, follows light / dark */
 .swatch-none { --swatch: var(--muted); }
 .swatch-none > span { background: var(--surface-2); color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--line); }
+
+/* Tap sizes. On phones / touch screens small buttons get at least 40px of height (fingers),
+   centred content; with a mouse they keep their compact size. */
+@media (pointer: coarse), (max-width: 767.98px) {
+  .btn-sm, .btn-group-sm > .btn { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+  .btn-sm.w-100 { display: flex; }
+  .side-user .btn, .cal-nav .btn { min-width: 40px; }
+  .profile-photo-edit { width: 40px; height: 40px; right: -8px; bottom: -8px; opacity: 1; }   /* no hover on touch */
+}
+/* attendance mark buttons (P · L · A · E) on laptops: a little bigger, easier to hit */
+@media (min-width: 576px) {
+  .btn-group-sm > .js-mark { min-width: 34px; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+}

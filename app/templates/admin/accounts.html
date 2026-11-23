@@ -19,12 +19,23 @@
     <td class="font-monospace">{{ a.student_number if a.role == 'student' else a.username }}</td>
     <td><span class="chip {{ 'chip-info' if a.role == 'instructor' else 'chip-muted' }}">{{ a.role|capitalize }}</span></td>
     <td class="text-end">
-      <form method="post" action="{{ url_for('admin.account_delete', user_id=a.id) }}"
-            data-confirm="Delete {{ a.first_name }} {{ a.last_name }}'s account? They can't log in any more{% if a.role == 'instructor' %} and their subjects are archived{% endif %}. You can restore it from the Deleted list."
-            data-confirm-title="Delete account" data-confirm-ok="Delete account">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-sm btn-outline-danger btn-icon text-nowrap"><i class="bi bi-trash"></i> Delete</button>
-      </form>
+      {# Delete lives in a menu (not a red button on every row) so a mis-click is less likely #}
+      <div class="dropdown">
+        <button type="button" class="btn btn-sm btn-light" data-bs-toggle="dropdown" aria-expanded="false"
+                aria-label="Actions for {{ a.first_name }} {{ a.last_name }}"><i class="bi bi-three-dots" aria-hidden="true"></i></button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          {% if a.role == 'student' %}
+          <li><a class="dropdown-item" href="{{ url_for('admin.student', student_id=a.id) }}"><i class="bi bi-person-vcard"></i> Student support</a></li>
+          <li><hr class="dropdown-divider"></li>
+          {% endif %}
+          <li><form method="post" action="{{ url_for('admin.account_delete', user_id=a.id) }}"
+                    data-confirm="Delete {{ a.first_name }} {{ a.last_name }}'s account? They can't log in any more{% if a.role == 'instructor' %} and their subjects are archived{% endif %}. You can restore it from the Deleted list."
+                    data-confirm-title="Delete account" data-confirm-ok="Delete account">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="dropdown-item text-danger"><i class="bi bi-trash"></i> Delete account…</button>
+          </form></li>
+        </ul>
+      </div>
     </td>
   </tr>{% else %}<tr><td colspan="4" class="text-muted">No accounts found.</td></tr>{% endfor %}</tbody>
 </table></div></div>
