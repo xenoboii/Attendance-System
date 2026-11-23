@@ -595,6 +595,10 @@ a:hover { color: var(--brand-600); }
 .checkin-hero .btn-checkin:hover { transform: translateY(-1px); }
 .checkin-hero .btn-checkin:disabled { background: rgba(255,255,255,.18); color: #fff; box-shadow: none; opacity: 1; }
 .checkin-hero .form-control { background: rgba(255,255,255,.95); border: 0; }
+/* class picker beside Check in (only when two classes are open at once) */
+.checkin-hero select.class-pick.form-select { width: auto; max-width: 100%; flex: 0 1 auto; min-width: 0; border: 0; border-radius: 12px;
+                            background-color: rgba(255,255,255,.95); color: #0f172a; font-weight: 500; }
+.checkin-hero .class-pick[hidden] { display: none; }
 /* instructor dashboard: "Live now" card for a class with check-in open */
 .live-hero { text-decoration: none; transition: transform .15s ease, box-shadow .15s ease; }
 .live-hero:hover { color: #fff; transform: translateY(-2px); box-shadow: var(--shadow); }

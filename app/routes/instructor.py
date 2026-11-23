@@ -424,7 +424,11 @@ def _is_fetch():
 def section_start(section_id):
     """Open TODAY's existing session now. Never creates a new report column."""
     _section_or_404(section_id)
-    sid = sessions.start_now(get_db(), g.user["id"], section_id)
+    try:
+        sid = sessions.start_now(get_db(), g.user["id"], section_id)
+    except ValidationError as exc:                 # another class is still open (one at a time)
+        flash(exc.errors["state"], "warning")
+        return redirect(url_for(".section", section_id=section_id, tab="sessions"))
     if sid is None:
         flash("There is no upcoming class session today for this section. Use “Add session” to schedule one.", "warning")
         return redirect(url_for(".section", section_id=section_id, tab="sessions"))
@@ -459,7 +463,16 @@ def session_create(section_id):
     if request.form.get("type") == "async":
         flash("Async activity added. Everyone enrolled is marked present.", "success")
     else:
-        flash("Session added.", "info")
+        # held back = asked for Automatic, but it was saved as manual because another class is open
+        new = sessions.get_session(db, g.user["id"], sid)
+        other = sessions.other_open_session(db, g.user["id"], sid)
+        held = (other and (request.form.get("checkin_mode") or "auto") == "auto"
+                and new["checkin_mode"] == "manual")
+        if held:
+            flash(f"Session added, but check-in wasn't opened: {other['subject_code']} · {other['section_name']} "
+                  "is still open. Only one class can take check-ins at a time; end it, then open this one.", "warning")
+        else:
+            flash("Session added.", "info")
     return redirect(url_for(".session_page", session_id=sid))
 
 
@@ -497,7 +510,11 @@ def session_state(session_id):
     choice = request.form.get("choice", "")
     if choice not in ("present", "late"):
         abort(400)
-    sessions.set_state(get_db(), g.user["id"], session_id, choice)
+    try:
+        sessions.set_state(get_db(), g.user["id"], session_id, choice)
+    except ValidationError as exc:                 # another class is still open (one at a time)
+        flash(exc.errors["state"], "warning")
+        return redirect(url_for(".session_page", session_id=session_id))
     flash({"present": "Check-in is open. Students are marked PRESENT.",
            "late": "Check-in is open. Students are now marked LATE."}[choice], "success")
     return redirect(url_for(".session_page", session_id=session_id))

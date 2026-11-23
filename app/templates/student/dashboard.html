@@ -26,6 +26,13 @@
           <button type="button" id="checkin-btn" class="btn btn-checkin btn-icon" data-action="{{ button.action }}"
                   {% if not button.enabled %}disabled{% endif %}>
             <i class="bi bi-hand-index-thumb"></i><span>{{ button.label }}</span></button>
+          {# overlapping classes (two open at once): pick which one. Hidden otherwise. #}
+          <select id="class-pick" class="form-select class-pick" aria-label="Class to check in to"
+                  {% if not button.options %}hidden{% endif %}>
+            {% for o in button.options %}
+              <option value="{{ o.id }}" {{ 'selected' if o.id == button.session_id }}>{{ o.label }}{{ ' ✓' if o.done }}</option>
+            {% endfor %}
+          </select>
         </div>
         {# check-out needs no signature: the button posts this form directly #}
         <form method="post" action="{{ url_for('student.checkout') }}" id="checkout-form" class="d-none">
@@ -107,6 +114,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="signature" id="signature-data">
       <input type="hidden" name="code" id="code-hidden">
+      <input type="hidden" name="session_id" id="session-hidden">{# the class picked (overlapping classes) #}
       <div class="modal-header">
         <div>
           <h2 class="modal-title h5 fw-bold" id="sign-title"><i class="bi bi-pen text-primary"></i> Sign to check in</h2>
@@ -142,6 +150,9 @@
     if (!code.classList.contains("d-none") && !code.value.trim()) { code.focus(); code.classList.add("is-invalid"); return; }
     code.classList.remove("is-invalid");
     document.getElementById("code-hidden").value = code.value.trim();
+    // overlapping classes: check in to the class picked beside the button
+    const pick = document.getElementById("class-pick");
+    document.getElementById("session-hidden").value = pick.hidden ? "" : pick.value;
     bootstrap.Modal.getOrCreateInstance(document.getElementById("sign-modal")).show();
   });
 </script>
@@ -152,9 +163,25 @@
   const ICONS = JSON.parse('{{ checkin_text.icons|tojson }}');
   const STATES = JSON.parse('{{ checkin_text.states|tojson }}');
   const $ = (id) => document.getElementById(id);
-  setInterval(async () => {
+  const STATUS_URL = "{{ url_for('student.checkin_status') }}";
+  async function refreshCard() {
+    const pick = $("class-pick");
     let b;
-    try { b = await (await fetch("{{ url_for('student.checkin_status') }}")).json(); } catch (e) { return; }
+    const url = STATUS_URL + (!pick.hidden && pick.value ? "?session=" + encodeURIComponent(pick.value) : "");
+    try { b = await (await fetch(url)).json(); } catch (e) { return; }
+    // class picker: only with two or more open classes; keep the student's choice
+    const opts = b.options || [];
+    const key = JSON.stringify(opts);
+    if (pick.dataset.key !== key) {
+      pick.dataset.key = key;
+      pick.replaceChildren(...opts.map((o) => {
+        const el = document.createElement("option");
+        el.value = o.id; el.textContent = o.label + (o.done ? " ✓" : "");
+        return el;
+      }));
+    }
+    pick.hidden = opts.length < 2;
+    if (b.session_id && !pick.hidden) pick.value = String(b.session_id);
     $("checkin-hero").className = "card checkin-hero h-100 " + b.variant;
     $("checkin-icon").className = "bi bi-" + ICONS[b.variant];
     $("checkin-state").textContent = STATES[b.variant];
@@ -164,6 +191,8 @@
     $("checkin-btn").dataset.action = b.action;
     $("checkin-btn").querySelector("span").textContent = b.label;
     $("code-input").classList.toggle("d-none", !b.needs_code);
-  }, 5000);
+  }
+  setInterval(refreshCard, 5000);
+  $("class-pick").addEventListener("change", refreshCard);     // show the picked class right away
 </script>
 {% endblock %}

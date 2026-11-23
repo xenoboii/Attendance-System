@@ -34,14 +34,14 @@ def _ts(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def find_open_session(conn, student_id: int, now: datetime):
-    """(session, state) the student can check in to right now, or (None, 'disabled').
+def find_open_sessions(conn, student_id: int, now: datetime):
+    """Every (session, state) the student can check in to right now, nearest start time first.
 
     Candidates: sessions of sections the student is actively enrolled in that are
     today (auto mode) or currently enabled by the instructor (manual mode).
-    If more than one is open, pick the one whose start time is closest to now.
     Manual sessions only stay open on their own date (except async activities),
     so a session the instructor forgot to close doesn't stay open forever.
+    More than one = overlapping classes (different instructors); the student picks.
     """
     ensure_sessions_for_date(conn, now.date())   # today's sessions from the weekly schedule
     rows = conn.execute(
@@ -72,9 +72,6 @@ def find_open_session(conn, student_id: int, now: datetime):
         if state != DISABLED:
             open_sessions.append((session, state))
 
-    if not open_sessions:
-        return None, DISABLED
-
     def distance(item):
         s = item[0]
         if not s["start_time"]:
@@ -82,7 +79,33 @@ def find_open_session(conn, student_id: int, now: datetime):
         start = datetime.strptime(f'{s["session_date"]} {s["start_time"]}', "%Y-%m-%d %H:%M")
         return abs((now - start).total_seconds())
 
-    return min(open_sessions, key=distance)
+    return sorted(open_sessions, key=distance)
+
+
+def find_open_session(conn, student_id: int, now: datetime, session_id: int | None = None):
+    """(session, state) to check in to, or (None, 'disabled').
+    session_id given (the student picked a class): that one, if it's open.
+    Otherwise the nearest open class the student hasn't checked in to yet (so with two
+    overlapping classes, a second tap checks in to the other one), else the nearest."""
+    opens = find_open_sessions(conn, student_id, now)
+    if session_id:
+        return next(((s, st) for s, st in opens if s["id"] == session_id), (None, DISABLED))
+    if not opens:
+        return None, DISABLED
+    return next(((s, st) for s, st in opens if not _existing_record(conn, s["id"], student_id)), opens[0])
+
+
+def open_class_options(conn, student_id: int, now: datetime):
+    """The class picker beside Check in: only when more than one class is open."""
+    opens = find_open_sessions(conn, student_id, now)
+    if len(opens) < 2:
+        return []
+    out = []
+    for s, st in opens:
+        when = datetime.strptime(s["start_time"], "%H:%M").strftime("%I:%M %p").lstrip("0") if s["start_time"] else ""
+        out.append({"id": s["id"], "label": f"{s['subject_code']} · {s['section_name']}" + (f" ({when})" if when else ""),
+                    "state": st, "done": _existing_record(conn, s["id"], student_id) is not None})
+    return out
 
 
 def find_checkout_session(conn, student_id: int, now: datetime):
@@ -151,7 +174,7 @@ def _student(conn, student_id: int):
 
 def check_in(conn, student_id: int, method: str, now: datetime | None = None,
              ip_address: str | None = None, device_info: str | None = None,
-             code: str | None = None) -> dict:
+             code: str | None = None, session_id: int | None = None) -> dict:
     """Record attendance.
 
     Returns {"result", "student", "session", "record"}; "record" is the new
@@ -161,13 +184,15 @@ def check_in(conn, student_id: int, method: str, now: datetime | None = None,
     out = {"result": None, "student": _student(conn, student_id),
            "session": None, "record": None}
 
-    # check-out open for one of the student's classes -> this tap / press checks them out
-    # (a student who never checked in there may still check in to another open class)
+    # check-out open for one of the student's classes -> this tap checks them out. Only when they
+    # still NEED to check out there: a student who never checked in there, or already checked out
+    # (e.g. class A's check-out was left open and the next class B is now taking check-ins),
+    # goes on to check in to the open class instead.
     co = check_out(conn, student_id, now) if method == "rfid" else None
-    if co and co["result"] != NOT_CHECKED_IN:
+    if co and co["result"] not in (NOT_CHECKED_IN, ALREADY_CHECKED_OUT):
         return co
 
-    session, state = find_open_session(conn, student_id, now)
+    session, state = find_open_session(conn, student_id, now, session_id)   # session_id: picked class
     if session is None:
         if co:
             return co                      # nothing to check out of, and no check-in open
@@ -210,31 +235,40 @@ def check_in(conn, student_id: int, method: str, now: datetime | None = None,
     return out
 
 
-def get_button_status(conn, student_id: int, now: datetime | None = None) -> dict:
+def get_button_status(conn, student_id: int, now: datetime | None = None,
+                      session_id: int | None = None) -> dict:
     """What the student's web dashboard should show for the check-in button.
 
     enabled  -> clickable;   variant = "present" (green) or "late" (orange)
     disabled -> greyed out;  variant = "closed" or "done" (already checked in)
     """
     now = now or datetime.now()
+    # A check-out comes first only while the student still has to check out there. Once they're
+    # out (or never checked in), a class that's open for check-in right now takes over - so a
+    # check-out left open on the previous class never hides the next one.
     co = find_checkout_session(conn, student_id, now)
+    checked_out = None
     if co:
         rec = _existing_record(conn, co["id"], student_id)
         name = f"{co['subject_code']} {co['section_name']}"
         if rec and rec["status"] in ("present", "late"):
-            if rec["checked_out_at"]:
-                t = datetime.strptime(rec["checked_out_at"], "%Y-%m-%d %H:%M:%S")
-                return {"enabled": False, "variant": "out", "session": co, "action": "checkout",
-                        "label": "Checked out",
-                        "message": f"You checked out of {name} at {t:%I:%M %p}. You can leave now."}
-            return {"enabled": True, "variant": "checkout", "session": co, "action": "checkout",
-                    "label": "Check out",
-                    "message": (f"Check-out is open for {name}. Check out before you leave, or you'll "
-                                "be marked ABSENT. Tapping your card works too.")}
+            if not rec["checked_out_at"]:
+                return {"enabled": True, "variant": "checkout", "session": co, "action": "checkout",
+                        "label": "Check out",
+                        "message": (f"Check-out is open for {name}. Check out before you leave, or you'll "
+                                    "be marked ABSENT. Tapping your card works too.")}
+            t = datetime.strptime(rec["checked_out_at"], "%Y-%m-%d %H:%M:%S")
+            checked_out = {"enabled": False, "variant": "out", "session": co, "action": "checkout",
+                           "label": "Checked out",
+                           "message": f"You checked out of {name} at {t:%I:%M %p}. You can leave now."}
 
-    session, state = find_open_session(conn, student_id, now)
+    session, state = find_open_session(conn, student_id, now, session_id)
+    if session is None and session_id:                      # picked class closed meanwhile
+        session, state = find_open_session(conn, student_id, now)
 
     if session is None:
+        if checked_out:
+            return checked_out
         return {"enabled": False, "variant": "closed", "session": None,
                 "label": "Check in",
                 "message": "Check-in opens a few minutes before your class starts."}
@@ -264,8 +298,8 @@ def get_button_status(conn, student_id: int, now: datetime | None = None) -> dic
 
 def web_check_in(conn, student_id: int, code: str | None = None,
                  ip_address: str | None = None, device_info: str | None = None,
-                 now: datetime | None = None) -> dict:
-    return check_in(conn, student_id, "web", now, ip_address, device_info, code)
+                 now: datetime | None = None, session_id: int | None = None) -> dict:
+    return check_in(conn, student_id, "web", now, ip_address, device_info, code, session_id)
 
 
 def web_check_out(conn, student_id: int, now: datetime | None = None) -> dict:

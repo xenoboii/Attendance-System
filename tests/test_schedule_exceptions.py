@@ -55,6 +55,7 @@ def test_marking_leaves_a_used_session_alone(conn):
     _weekly(conn)
     sessions.ensure_sessions_for_date(conn, MONDAY)
     sid = conn.execute("SELECT id FROM class_sessions WHERE schedule_id IS NOT NULL").fetchone()[0]
+    sessions.end_session(conn, PROF, 1, T0)                         # one class at a time: demo class done
     sessions.set_state(conn, PROF, sid, "present", T0)             # someone opened it
     classes.add_schedule_exception(conn, PROF, 1, {"exception_date": MONDAY.isoformat(), "reason": "Holiday"})
     row = conn.execute("SELECT deleted_at FROM class_sessions WHERE id = ?", (sid,)).fetchone()

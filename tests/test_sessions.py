@@ -540,3 +540,30 @@ def test_reset_route(app, client):
     login(student, "2026-0001", "student123")
     assert student.post(f"/instructor/sessions/{sid}/reset", base_url=PROF_SITE).status_code in (302, 403, 404)
     assert student.post(f"/instructor/sessions/{sid}/reset", base_url=STUDENT_SITE).status_code in (302, 403, 404)
+
+
+# ---------------------------------------------------------------- one class at a time
+def test_only_one_class_open_at_a_time(conn):
+    # the demo class (session 1) is open at T0; a second class today can't be opened
+    sid = sessions.create_session(conn, PROF, 1, {"type": "regular", "session_date": MONDAY.isoformat(),
+                                                  "start_time": "10:00", "checkin_mode": "manual"}, T0)
+    with pytest.raises(ValidationError) as e:
+        sessions.set_state(conn, PROF, sid, "present", T0)
+    assert "still open" in e.value.errors["state"] and e.value.errors["open_session_id"] == 1
+    with pytest.raises(ValidationError):
+        sessions.add_column_now(conn, PROF, 1, T0)                   # nothing added either
+    # an older class reopened by hand counts as open too
+    sessions.end_session(conn, PROF, 1, T0)
+    sessions.set_state(conn, PROF, sid, "present", T0)               # now it's fine
+    assert sessions.other_open_session(conn, PROF, 1, T0)["id"] == sid
+    with pytest.raises(ValidationError):
+        sessions.set_state(conn, PROF, 1, "present", T0)             # reopening the old one: refused
+
+
+def test_added_session_is_held_while_another_is_open(conn):
+    # "Add session" at a time that would open it right away: added, but not opened
+    sid = sessions.create_session(conn, PROF, 1, {"type": "regular", "session_date": MONDAY.isoformat(),
+                                                  "start_time": "07:00"}, T0)
+    s = sessions.get_session(conn, PROF, sid)
+    assert (s["checkin_mode"], s["manual_state"]) == ("manual", "disabled")
+    assert sessions.describe(s, T0)["phase"] == "upcoming"

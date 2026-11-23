@@ -174,3 +174,30 @@ def test_student_checkout_route(app, client):
     assert db.execute("SELECT checked_out_at FROM attendance WHERE session_id = ? AND student_id = ?",
                       (sid, MARIA)).fetchone()[0]
     db.close()
+
+
+def test_finished_checkout_does_not_hide_the_next_class(conn):
+    """Class A's check-out was left open (never ended) and class B starts a minute later
+    (e.g. another instructor's class). A student who already checked out of A must be able to
+    check in to B - and B's own check-out must start from a clean record."""
+    att.rfid_tap(conn, "CARD0001", at("07:01"))                           # Maria checks in to A
+    sessions.open_checkout(conn, 1, 1, at("08:30"))
+    assert att.rfid_tap(conn, "CARD0001", at("08:31"))["result"] == "checked_out"
+    # class B, open for check-in while A's check-out is still open (set directly: the
+    # one-class-at-a-time rule stops this for one instructor, not across instructors)
+    conn.execute("""INSERT INTO class_sessions (section_id, session_date, start_time, type, checkin_mode,
+                                                manual_state, opened_at, created_by)
+                    VALUES (1, ?, '08:32', 'regular', 'manual', 'present', ?, 1)""",
+                 (at("08:32").strftime("%Y-%m-%d"), at("08:32").strftime("%Y-%m-%d %H:%M:%S")))
+    b = conn.execute("SELECT max(id) FROM class_sessions").fetchone()[0]
+    conn.commit()
+
+    card = att.get_button_status(conn, MARIA, at("08:33"))
+    assert (card["variant"], card["session"]["id"]) == ("present", b)     # B, not "checked out of A"
+    r = att.rfid_tap(conn, "CARD0001", at("08:33"))
+    assert (r["result"], r["session"]["id"]) == ("present", b)            # the tap checks in to B
+
+    sessions.open_checkout(conn, 1, b, at("09:30"))
+    card = att.get_button_status(conn, MARIA, at("09:31"))
+    assert (card["variant"], card["session"]["id"]) == ("checkout", b)    # not already checked out
+    assert att.rfid_tap(conn, "CARD0001", at("09:31"))["result"] == "checked_out"

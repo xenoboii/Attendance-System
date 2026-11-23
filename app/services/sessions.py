@@ -333,8 +333,10 @@ def start_now(conn, instructor_id, section_id, now=None) -> int | None:
 
 
 def add_column_now(conn, instructor_id, section_id, now=None) -> int:
-    """Deliberately add a NEW session (= new date column in the report) starting now, and open it."""
+    """Deliberately add a NEW session (= new date column in the report) starting now, and open it.
+    Refused (nothing is added) while another of the instructor's classes is open."""
     now = now or datetime.now()
+    _one_at_a_time(conn, instructor_id, None, now)
     sid = _new_session(conn, section_id, day=now.strftime("%Y-%m-%d"), start=now.strftime("%H:%M"),
                        end=None, type_="regular", title=None, mode="manual", state="present",
                        created_by=instructor_id, now=now)
@@ -385,6 +387,13 @@ def create_session(conn, instructor_id, section_id, form, now=None, *, commit=Tr
                        state="disabled", created_by=instructor_id, now=now)
     if type_ == "async":
         _auto_present(conn, instructor_id, sid, section_id, now, note="async")
+    else:
+        # one class at a time: if its class time would open it right now while another class is
+        # open, it's added but NOT opened (manual, not opened yet) - open it after ending the other
+        new = get_session(conn, instructor_id, sid)
+        if new and describe(new, now)["phase"] in OPEN_PHASES and other_open_session(conn, instructor_id, sid, now):
+            conn.execute("UPDATE class_sessions SET checkin_mode = 'manual', manual_state = 'disabled' WHERE id = ?",
+                         (sid,))
     _audit(conn, instructor_id, "create", sid, {"date": day, "type": type_})
     if commit:
         conn.commit()
@@ -494,15 +503,61 @@ def _log_change(conn, session_id, user_id, mode, state):
                     VALUES (?, ?, ?, ?)""", (session_id, user_id, mode, state))
 
 
+OPEN_PHASES = ("present", "late", "checkout")
+
+
+def _instructor_of(conn, session_id):
+    row = conn.execute("""SELECT sub.instructor_id FROM class_sessions cs
+                          JOIN sections s ON s.id = cs.section_id
+                          JOIN subjects sub ON sub.id = s.subject_id WHERE cs.id = ?""", (session_id,)).fetchone()
+    return row[0] if row else None
+
+
+def other_open_session(conn, instructor_id, exclude_id=None, now=None):
+    """One class at a time: the instructor's session (other than exclude_id) that is taking
+    check-ins or check-outs right now, or None. Looks at every date, so an older class
+    reopened by hand counts too."""
+    now = now or datetime.now()
+    rows = conn.execute(
+        SESSION_SELECT + """ WHERE sub.instructor_id = ? AND cs.id <> ?
+                             AND cs.deleted_at IS NULL AND cs.ended_at IS NULL AND cs.type <> 'async'
+                             AND s.deleted_at IS NULL AND sub.deleted_at IS NULL AND sub.ended_at IS NULL
+                             AND ((cs.checkin_mode = 'manual' AND cs.manual_state IN ('present', 'late'))
+                                  OR cs.checkout_open_at IS NOT NULL
+                                  OR (cs.checkin_mode = 'auto' AND cs.session_date = ?))
+                             ORDER BY cs.session_date DESC, cs.start_time DESC""",
+        (instructor_id, exclude_id or 0, now.strftime("%Y-%m-%d"))).fetchall()
+    for r in rows:
+        row = dict(r)
+        if describe(row, now)["phase"] in OPEN_PHASES:
+            return row
+    return None
+
+
+def _one_at_a_time(conn, instructor_id, exclude_id, now):
+    other = other_open_session(conn, instructor_id, exclude_id, now)
+    if other:
+        day = datetime.strptime(other["session_date"], "%Y-%m-%d").strftime("%a, %b %d").replace(" 0", " ")
+        if other.get("start_time"):                 # same section twice in a day: the time tells them apart
+            day += ", " + datetime.strptime(other["start_time"], "%H:%M").strftime("%I:%M %p").lstrip("0")
+        raise ValidationError({
+            "state": f"{other['subject_code']} · {other['section_name']} ({day}) is still open. "
+                     "Only one class can take check-ins at a time: end that one first.",
+            "open_session_id": other["id"]})
+
+
 def set_state(conn, user_id, session_id, choice, now=None) -> None:
     """Live controls. choice: present | late (open / reopen - takes manual control)
                               disabled    (pause without ending - dev page only)
-                              auto        (same as set_mode('auto'))"""
+                              auto        (same as set_mode('auto'))
+    Opening is refused while another of the instructor's classes is open (one at a time)."""
     if choice == "auto":
         return set_mode(conn, user_id, session_id, "auto", now)
     if choice not in ("present", "late", "disabled"):
         raise ValueError(choice)
     now = now or datetime.now()
+    if choice in ("present", "late"):
+        _one_at_a_time(conn, _instructor_of(conn, session_id), session_id, now)
     s = conn.execute("SELECT * FROM class_sessions WHERE id = ?", (session_id,)).fetchone()
     opened_at = s["opened_at"] or (_ts(now) if choice in ("present", "late") else None)
     ended_at = None if choice in ("present", "late") else s["ended_at"]     # opening = reopen
@@ -642,6 +697,9 @@ def set_mode(conn, user_id, session_id, mode, now=None) -> None:
     if mode == "auto":
         if not s["start_time"]:
             raise ValidationError({"state": "This session has no start time, so it can't run automatically."})
+        # automatic would open it right now (inside its class time): one class at a time
+        if get_checkin_state({**s, "checkin_mode": "auto"}, now) != "disabled":
+            _one_at_a_time(conn, _instructor_of(conn, session_id), session_id, now)
         conn.execute("UPDATE class_sessions SET checkin_mode = 'auto', manual_state = 'disabled' WHERE id = ?",
                      (session_id,))
         _log_change(conn, session_id, user_id, "auto", "disabled")

@@ -34,11 +34,16 @@ MESSAGES = {
 }
 
 
-def _button_json(db, student_id):
-    b = attendance.get_button_status(db, student_id)
+def _button_json(db, student_id, session_id=None):
+    """The check-in card. session_id = the class picked in the picker (overlapping classes)."""
+    b = attendance.get_button_status(db, student_id, session_id=session_id)
     s = b.pop("session")
     b.setdefault("action", "checkin")             # "checkout" while check-out is open
     b["needs_code"] = bool(s and s.get("checkin_code") and b["enabled"] and b["action"] == "checkin")
+    b["session_id"] = s["id"] if s else None
+    # picker beside Check in: only when two or more classes are open for check-in
+    b["options"] = (attendance.open_class_options(db, student_id, datetime.now())
+                    if b["action"] == "checkin" and s else [])
     return b
 
 
@@ -71,7 +76,7 @@ def my_classes():
 @bp.get("/checkin/status")
 @login_required("student")
 def checkin_status():
-    return jsonify(_button_json(get_db(), g.user["id"]))
+    return jsonify(_button_json(get_db(), g.user["id"], request.args.get("session", type=int)))
 
 
 @bp.post("/checkin")
@@ -86,7 +91,8 @@ def checkin():
         return redirect(url_for(".dashboard"))
     r = attendance.web_check_in(db, g.user["id"], code=request.form.get("code") or None,
                                 ip_address=request.remote_addr,
-                                device_info=request.user_agent.string)
+                                device_info=request.user_agent.string,
+                                session_id=request.form.get("session_id", type=int))   # picked class
     ok = r["result"] in ("present", "late")
     if ok:
         checkin_signatures.save(db, r["session"]["id"], g.user["id"], png, current_app.config["SIGNATURE_DIR"])
