@@ -1,0 +1,35 @@
+{# Month calendar for the student dashboard (data: services/calendar_view.py -> cal) #}
+<div class="card student-dashboard-panel" id="calendar"><div class="card-body">
+  <div class="cal-head">
+    <div class="card-title-sm mb-0"><i class="bi bi-calendar3"></i> {{ cal.label }}</div>
+    <div class="cal-nav">
+      {% if not cal.is_current %}<a class="btn btn-sm btn-light" href="{{ url_for('student.dashboard') }}#calendar">Today</a>{% endif %}
+      <a class="btn btn-sm btn-light" href="{{ url_for('student.dashboard', m=cal.prev) }}#calendar" aria-label="Previous month"><i class="bi bi-chevron-left"></i></a>
+      <a class="btn btn-sm btn-light" href="{{ url_for('student.dashboard', m=cal.next) }}#calendar" aria-label="Next month"><i class="bi bi-chevron-right"></i></a>
+    </div>
+  </div>
+
+  <div class="student-dashboard-scroll" role="region" aria-label="Class calendar" tabindex="0">
+    <div class="cal-grid" role="grid" aria-label="{{ cal.label }}">
+      {% for d in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] %}<div class="cal-dow" role="columnheader">{{ d }}</div>{% endfor %}
+      {% for week in cal.weeks %}{% for d in week %}
+        <button type="button" role="gridcell" data-cal-day="{{ d.iso }}"
+                class="cal-day{{ ' out' if not d.in_month }}{{ ' today' if d.is_today }}{{ ' past' if d.is_past }}{{ ' no-class' if d.has_no_class }}{{ ' selected' if d.iso == cal.selected }}"
+                aria-label="{{ d.date.strftime('%B %d').replace(' 0', ' ') }}{% if d.has_no_class %}, no class{% elif d.events %}, {{ d.events|length }} class{{ '' if d.events|length == 1 else 'es' }}{% endif %}">
+          <span class="num">{{ d.day }}</span>
+          <span class="dots">
+            {% if d.has_class %}<i class="dot-class"></i>{% endif %}
+            {% if d.has_extra %}<i class="dot-extra"></i>{% endif %}
+            {% if d.has_no_class %}<i class="dot-off"></i>{% endif %}
+          </span>
+        </button>
+      {% endfor %}{% endfor %}
+    </div>
+
+    <div class="cal-legend">
+      <span><i class="dot-class"></i> Class</span>
+      <span><i class="dot-extra"></i> Make-up / async</span>
+      <span><i class="dot-off"></i> No class</span>
+    </div>
+  </div>
+</div></div>

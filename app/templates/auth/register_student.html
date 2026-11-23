@@ -1,0 +1,66 @@
+{% extends "auth_base.html" %}
+{% from "_macros.html" import field, name_fields, password_fields %}
+{% block title %}Student registration{% endblock %}
+{% block box_class %}xwide{% endblock %}
+{% block content %}
+<div class="steps">
+  <div class="step active"><span class="num">1</span> Account details</div>
+  <div class="step"><span class="num">2</span> Backup codes</div>
+  <div class="step"><span class="num">3</span> Signature</div>
+</div>
+<h1>Create your student account</h1>
+<p class="sub">Use your real name. It appears on your instructor's attendance reports.</p>
+
+<form method="post" novalidate data-confirm-icon="key-fill" data-confirm-title="Save your backup codes"
+      data-confirm-ok="Create account"
+      data-confirm="Upon registering, a PDF with 10 backup codes will download. Keep it safe: it's the only way to recover your account if you forget your password.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {# laptop: two columns (you | class and login) so the whole form fits on one screen #}
+  <div class="register-grid">
+  <div>
+  {{ field("student_number", "Student number", form, errors, required=true,
+           placeholder="e.g. 2026-0001", help="You will use this to log in.") }}
+  {{ name_fields(form, errors) }}
+  </div>
+  <div>
+  {# Course + Year + Section -> shown to the instructor as "BSCPE 4A" (same choices as My account) #}
+  <div class="row g-2">
+    <div class="col-5 mb-3">
+      <label class="form-label" for="program">Course{% if courses %} <span class="text-danger">*</span>{% endif %}</label>
+      <select id="program" name="program" class="form-select{% if errors.get('program') %} is-invalid{% endif %}"
+              {{ 'required' if courses }}>
+        <option value="">—</option>
+        {% for course in courses %}<option value="{{ course.code }}"
+          {{ 'selected' if (form.get('program') or '')|upper == course.code }}>{{ course.code }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-4 mb-3">
+      <label class="form-label" for="year_level">Year{% if courses %} <span class="text-danger">*</span>{% endif %}</label>
+      <select id="year_level" name="year_level" class="form-select{% if errors.get('year_level') %} is-invalid{% endif %}"
+              {{ 'required' if courses }}>
+        <option value="">—</option>
+        {% for y in range(1, 6) %}<option value="{{ y }}" {{ 'selected' if form.get('year_level')|string == y|string }}>{{ ['1st','2nd','3rd','4th','5th'][y-1] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-3 mb-3">
+      <label class="form-label" for="section_letter">Section{% if courses %} <span class="text-danger">*</span>{% endif %}</label>
+      <select id="section_letter" name="section_letter" class="form-select{% if errors.get('section_letter') %} is-invalid{% endif %}"
+              {{ 'required' if courses }}>
+        <option value="">—</option>
+        {% for letter in 'ABCDEFG' %}<option value="{{ letter }}" {{ 'selected' if form.get('section_letter') == letter }}>{{ letter }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  {% set academic_error = errors.get('program') or errors.get('year_level') or errors.get('section_letter') %}
+  {% if academic_error %}<div class="text-danger small mt-n2 mb-3">{{ academic_error }}</div>
+  {% elif courses %}<div class="form-text mt-n2 mb-3">Choose carefully: only the admin can change these later.</div>
+  {% else %}<div class="form-text mt-n2 mb-3">No courses are set up yet. You can add them later in My account.</div>{% endif %}
+  {{ field("email", "Email (optional)", form, errors, type="email", autocomplete="email") }}
+  {{ password_fields(form, errors) }}
+  </div>
+  </div>
+  <button class="btn btn-primary w-100 py-2 btn-icon justify-content-center">Create account <i class="bi bi-arrow-right"></i></button>
+</form>
+
+<p class="auth-switch">Already registered? <a href="{{ url_for('auth.login') }}" class="fw-semibold">Log in</a></p>
+{% endblock %}

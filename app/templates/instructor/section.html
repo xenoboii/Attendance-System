@@ -1,0 +1,1025 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, section_name_fields %}
+{% from "instructor/_async_activity_modal.html" import async_activity_modal %}
+{% block title %}{{ section.subject_code }} {{ section.name }}{% endblock %}
+{% block body_class %}page-instructor-section section-view-{{ tab }}{% endblock %}
+{% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
+  <a href="{{ url_for('instructor.subject', subject_id=section.subject_id) }}">{{ section.subject_code }}</a><i class="bi bi-chevron-right small"></i>{{ section.name }}
+</div>
+<div class="page-header">
+  <div>
+    <h1>{{ section.subject_code }} · {{ section.name }}</h1>
+    <div class="sub">{{ section.subject_title }} · {{ section.school_year }} · {{ section.semester }} sem</div>
+  </div>
+  <div class="actions flex-column align-items-stretch">
+    <div class="join-code-box">
+      <div><div class="lbl">Join code</div><div class="code">{{ section.join_code }}</div></div>
+      <div class="d-flex gap-2 ms-2 join-code-actions">
+        <button class="btn btn-sm btn-light btn-icon" data-copy="{{ section.join_code }}"><i class="bi bi-clipboard"></i> Copy</button>
+        <form method="post" action="{{ url_for('instructor.section_join_code', section_id=section.id) }}"
+              data-confirm="Generate a new join code? The old code ({{ section.join_code }}) will stop working.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="back" value="{{ tab }}">
+          <button class="btn btn-sm btn-light btn-icon text-nowrap" title="Generate a new join code"><i class="bi bi-arrow-repeat"></i> New code</button>
+        </form>
+      </div>
+    </div>
+    <div class="report-actions">
+      {# attendance report: right under the join code, above the tab buttons #}
+      {# always available: with no classes yet it can still print a blank sheet for chosen dates #}
+      <button type="button" class="btn btn-light btn-icon justify-content-center" data-bs-toggle="modal" data-bs-target="#report-modal">
+        <i class="bi bi-file-earmark-arrow-down"></i> Attendance report</button>
+    </div>
+  </div>
+</div>
+
+{% if section.ended_at %}
+<div class="alert alert-secondary d-flex flex-wrap align-items-center gap-2 mb-3" role="status">
+  <i class="bi bi-archive"></i>
+  <div class="me-auto"><b>Archived.</b> The semester was ended on {{ section.ended_at[:10]|nicedate }}. No classes are scheduled and nothing can be changed; reports and exports still work.</div>
+  <a class="btn btn-sm btn-light" href="{{ url_for('instructor.subject', subject_id=section.subject_id) }}">Open subject</a>
+</div>
+{% endif %}
+{# tabs on the left, the current tab's main action on the right #}
+<div class="tabs-bar">
+  <nav class="tabs-pill mb-0">
+    {% for key, icon, label, count in [('sessions', 'broadcast', 'Attendance', None),
+                                       ('students', 'people', 'Students', students|length),
+                                       ('schedule', 'calendar-week', 'Schedule', schedules|length),
+                                       ('settings', 'sliders', 'Settings', None)] %}
+      <a class="{{ 'active' if tab == key }}" href="{{ url_for('instructor.section', section_id=section.id, tab=key) }}">
+        <i class="bi bi-{{ icon }}"></i>{{ label }}{% if count is not none %}<span class="count">{{ count }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+  <div class="tabs-actions">
+    {% if tab == 'sessions' %}
+      <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#add-session-modal">
+        <i class="bi bi-plus-square"></i> Add session</button>
+    {% elif tab == 'students' %}
+      {% if dropped %}
+      <button type="button" class="btn btn-light btn-icon" data-bs-toggle="modal" data-bs-target="#dropped-modal">
+        <i class="bi bi-person-x"></i> Dropped <span class="chip chip-muted ms-1">{{ dropped|length }}</span></button>
+      {% endif %}
+      <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#add-students-modal">
+        <i class="bi bi-person-plus"></i> Add students</button>
+    {% elif tab == 'schedule' %}
+      <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#add-schedule-modal">
+        <i class="bi bi-calendar-plus"></i> Add schedule</button>
+      <button type="button" class="btn btn-light btn-icon" data-bs-toggle="modal" data-bs-target="#no-class-modal">
+        <i class="bi bi-calendar-x"></i> Mark no class</button>
+      <button type="button" class="btn btn-light btn-icon" data-bs-toggle="modal" data-bs-target="#vacation-modal">
+        <i class="bi bi-calendar-range"></i> Vacation</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="section-tab-content">
+{% if tab == 'sessions' %}
+{% set phase_chip = {'present': ('chip-ok', 'Open · Present'), 'late': ('chip-warn', 'Open · Late'),
+                     'checkout': ('chip-info', 'Check-out open'),
+                     'ended': ('chip-muted', 'Ended'), 'upcoming': ('chip-info', 'Upcoming'), 'paused': ('chip-muted', 'Paused')} %}
+<div>
+  {% set open_now, upcoming, ended = overview.open_now, overview.upcoming, overview.ended %}
+
+  <!-- 1. OPEN NOW (only while check-in is open) -->
+  {% if open_now %}
+  <div class="card table-card mb-3 border-success-subtle">
+    <div class="panel-head">
+      <div class="card-title-sm mb-0 text-success"><span class="dot pulse text-success"></span> Open now</div>
+      <span class="small text-muted ms-auto d-none d-sm-inline">Students can check in right now</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-modern table-clickable">
+        <thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Check-in</th><th class="text-center">Checked in</th><th></th></tr></thead>
+        <tbody>
+          {% for x in open_now %}
+            {% set href = url_for('instructor.session_page', session_id=x.id) %}
+            <tr data-href="{{ href }}">
+              <td class="text-nowrap fw-semibold">{{ x.session_date|nicedate }}</td>
+              <td class="text-nowrap small">{{ x.start_time|time12 if x.start_time else '—' }}</td>
+              <td class="small">{{ types[x.type] }}</td>
+              <td>{% set pc = phase_chip[x.phase] %}<span class="chip {{ pc[0] }}"><span class="dot pulse"></span>{{ pc[1] }}</span></td>
+              <td class="text-center small text-nowrap fw-semibold">{{ x.counts.present + x.counts.late }}/{{ x.counts.total }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-primary btn-icon" href="{{ href }}">Manage <i class="bi bi-chevron-right"></i></a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 2. UPCOMING: created sessions not started yet + class days from the weekly schedule -->
+  <details class="card table-card mb-3 attendance-fold" id="upcoming-sessions" {% if show_all_upcoming %}open{% endif %}>
+    <summary class="panel-head">
+      <div class="card-title-sm mb-0"><i class="bi bi-calendar2-week"></i> Upcoming
+        <span class="chip chip-brand ms-1">{{ upcoming|length }}</span></div>
+      <span class="small text-muted ms-auto d-none d-sm-inline">Soonest first · scheduled classes open automatically on the day</span>
+      <i class="bi bi-chevron-down fold-chevron" aria-hidden="true"></i>
+    </summary>
+    {% if upcoming %}
+      <div class="table-responsive">
+        <table class="table table-modern">
+          <thead><tr><th>When</th><th>Date</th><th>Time</th><th>Type</th><th>Room</th><th></th></tr></thead>
+          <tbody>
+            {% for u in upcoming %}
+              <tr class="{{ 'text-muted' if u.no_class }}">
+                <td class="text-nowrap">
+                  {% if loop.first %}<span class="chip chip-brand"><i class="bi bi-arrow-right-circle-fill"></i>Next · {{ when_label(u.days_away) }}</span>
+                  {% else %}<span class="small text-muted">{{ when_label(u.days_away) }}</span>{% endif %}</td>
+                <td class="fw-semibold text-nowrap">{{ u.date|nicedate }}</td>
+                {% if u.async_day or u.type == 'async' %}
+                <td class="text-nowrap">{{ u.start_time|time12 if u.start_time else '—' }}</td>
+                <td colspan="2"><span class="chip chip-info"><i class="bi bi-house-door"></i> Async activity</span>
+                  <span class="small text-muted ms-1">{{ u.async_title if u.async_day else u.title }}</span></td>
+                {% elif u.no_class %}
+                <td colspan="3"><span class="chip chip-muted"><i class="bi bi-calendar-x"></i> No class</span>
+                  <span class="small text-muted ms-1">{{ u.reason }}</span></td>
+                {% else %}
+                <td class="text-nowrap">{% if u.start_time %}{{ u.start_time|time12 }}{% if u.end_time %} – {{ u.end_time|time12 }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="small">{{ types[u.type] }}{% if u.title %}<div class="text-muted text-truncate" style="max-width:160px">{{ u.title }}</div>{% endif %}
+                  {% if u.from_schedule %}<div class="text-muted"><i class="bi bi-arrow-repeat"></i> Weekly</div>{% endif %}</td>
+                <td>{% if u.room %}<span class="chip chip-muted"><i class="bi bi-geo-alt"></i>{{ u.room }}</span>{% else %}<span class="small text-muted">—</span>{% endif %}</td>
+                {% endif %}
+                <td class="text-end">
+                  {% if u.type == 'async' and not u.from_schedule and not section.ended_at %}
+                    {% set change_url = url_for('instructor.session_change_async', session_id=u.id) %}
+                    <div class="dropdown">
+                      <button type="button" class="btn btn-sm btn-light dropdown-toggle" data-bs-toggle="dropdown"
+                              aria-expanded="false">Async</button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#regular-session-modal"
+                                    data-change-url="{{ change_url }}" data-start="{{ u.regular_start_time or '' }}"
+                                    data-end="{{ u.regular_end_time or '' }}">
+                          <i class="bi bi-arrow-counterclockwise"></i> Regular (undo async)</button></li>
+                        <li><a class="dropdown-item" href="{{ url_for('instructor.session_page', session_id=u.id) }}">
+                          <i class="bi bi-box-arrow-up-right"></i> Open the async activity</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        {% for reason in ('Holiday', 'Suspended classes', 'No class') %}
+                          <li><form method="post" action="{{ change_url }}"
+                                    data-confirm="Mark {{ u.date|nicedate }} as {{ reason|lower }} for this section? The async activity will move to Recently deleted."
+                                    data-confirm-title="Change async activity" data-confirm-ok="Mark {{ reason }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="dropdown-item" name="choice" value="{{ reason }}"><i class="bi bi-calendar-x"></i> {{ reason }}</button>
+                          </form></li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% elif not u.from_schedule %}
+                    <a class="btn btn-sm btn-light btn-icon" href="{{ url_for('instructor.session_page', session_id=u.id) }}">Open <i class="bi bi-chevron-right"></i></a>
+                  {% else %}
+                    {# weekly class day: mark it as a holiday etc. (or change / clear that mark) right from this row #}
+                    <div class="btn-group">
+                      <button class="btn btn-sm btn-light dropdown-toggle{% if u.no_class %} text-warning-emphasis{% endif %}"
+                              data-bs-toggle="dropdown" aria-expanded="false">
+                        {{ 'Async' if u.async_day else (u.reason if u.no_class else 'Regular') }}</button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li><h6 class="dropdown-header">Mark {{ u.date|nicedate }} as</h6></li>
+                        {% if u.async_day %}
+                          {# undo: the async session and its automatic present marks are removed #}
+                          <li><form method="post" action="{{ url_for('instructor.schedule_exception_delete', exception_id=u.exception_id) }}"
+                                    data-confirm="Change {{ u.date|nicedate }} back to a regular class? The async activity &quot;{{ u.async_title }}&quot; and its automatic present marks are removed, and students check in as usual that day."
+                                    data-confirm-title="Back to regular class" data-confirm-ok="Back to regular">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="back" value="sessions">
+                            <button class="dropdown-item"><i class="bi bi-arrow-counterclockwise"></i> Regular (undo async)</button></form></li>
+                          <li><a class="dropdown-item" href="{{ url_for('instructor.session_page', session_id=u.async_session_id) }}"><i class="bi bi-box-arrow-up-right"></i> Open the async activity</a></li>
+                          <li><hr class="dropdown-divider"></li>
+                        {% elif u.no_class %}
+                          <li><form method="post" action="{{ url_for('instructor.schedule_exception_delete', exception_id=u.exception_id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="back" value="sessions">
+                            <button class="dropdown-item"><i class="bi bi-arrow-counterclockwise"></i> {{ 'Regular' if u.has_weekly_class else 'Clear no-class mark' }}</button></form></li>
+                          <li><hr class="dropdown-divider"></li>
+                        {% endif %}
+                        {# async: no check-in that day, everyone enrolled is marked present #}
+                        {% if u.reason != 'Async' %}
+                          <li><button type="button" class="dropdown-item" data-async-day="{{ u.date }}"
+                                      data-async-label="{{ u.date|nicedate }}" data-async-time="{{ u.start_time or '' }}">
+                            <i class="bi bi-house-door"></i> Async activity…</button></li>
+                          <li><hr class="dropdown-divider"></li>
+                        {% endif %}
+                        {% for r in ('Holiday', 'Suspended classes', 'No class') %}
+                          {% if r != u.reason %}
+                            <li><form method="post" action="{{ url_for('instructor.schedule_exception_add', section_id=section.id) }}"
+                                      {% if u.async_day %}data-confirm="Mark {{ u.date|nicedate }} as {{ r|lower }}? The async activity will move to Recently deleted."{% endif %}>
+                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                              <input type="hidden" name="exception_date" value="{{ u.date }}">
+                              <input type="hidden" name="reason" value="{{ r }}">
+                              <input type="hidden" name="back" value="sessions">
+                              <button class="dropdown-item"><i class="bi bi-calendar-x"></i> {{ r }}</button></form></li>
+                          {% endif %}
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if overview.upcoming_total > 4 %}
+        <div class="px-3 py-2 text-end">
+          <a class="btn btn-sm btn-light" href="{{ url_for('instructor.section', section_id=section.id, tab='sessions', upcoming='next' if show_all_upcoming else 'all', _anchor='upcoming-sessions') }}">
+            {{ 'Show next 4' if show_all_upcoming else 'Show all upcoming' }}</a>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="empty py-4"><i class="bi bi-calendar2-week"></i><h3>Nothing upcoming</h3>
+        <p class="mb-0">{% if schedules %}No classes in the next 4 weeks.{% else %}Add the weekly class days in the
+          <a href="{{ url_for('instructor.section', section_id=section.id, tab='schedule') }}">Schedule</a> tab and they'll show up here.{% endif %}</p></div>
+    {% endif %}
+  </details>
+
+  <!-- 3. ENDED: finished sessions, newest first (each one is a date column in the report) -->
+  <details class="card table-card attendance-fold">
+    <summary class="panel-head">
+      <div class="card-title-sm mb-0"><i class="bi bi-flag"></i> Ended
+        <span class="chip chip-muted ms-1">{{ ended|length }}</span></div>
+      <span class="small text-muted ms-auto d-none d-sm-inline">Newest first · each one is a date column in the report</span>
+      <i class="bi bi-chevron-down fold-chevron" aria-hidden="true"></i>
+    </summary>
+    {% if ended %}
+      <div class="table-responsive">
+        <table class="table table-modern table-clickable">
+          <thead><tr><th>Date</th><th>Time</th><th>Type</th><th class="text-center">Present</th><th class="text-center">Late</th><th class="text-center">Absent</th><th></th></tr></thead>
+          <tbody>
+            {% for x in ended %}
+              {% set href = url_for('instructor.session_page', session_id=x.id) %}
+              <tr data-href="{{ href }}">
+                <td class="text-nowrap fw-semibold">{{ x.session_date|nicedate }}</td>
+                <td class="text-nowrap small">{{ x.start_time|time12 if x.start_time else '—' }}</td>
+                <td class="small">{% if x.type == 'async' %}<span class="chip chip-info"><i class="bi bi-house-door"></i>Async</span>{% else %}{{ types[x.type] }}{% endif %}
+                  {% if x.title %}<div class="text-muted text-truncate" style="max-width:160px">{{ x.title }}</div>{% endif %}</td>
+                <td class="text-center small fw-semibold text-success">{{ x.counts.present }}</td>
+                <td class="text-center small fw-semibold text-warning">{{ x.counts.late }}</td>
+                <td class="text-center small {{ 'fw-semibold text-danger' if x.counts.absent else 'text-muted' }}">{{ x.counts.absent }}</td>
+                <td class="text-end"><a class="btn btn-sm btn-light btn-icon" href="{{ href }}">Open <i class="bi bi-chevron-right"></i></a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty py-4"><i class="bi bi-flag"></i><h3>No ended sessions yet</h3>
+        <p class="mb-0">Sessions move here once check-in closes.</p></div>
+    {% endif %}
+  </details>
+</div>
+
+<!-- "Mark as > Async activity" on an upcoming class day: asks for the activity's title -->
+{{ async_activity_modal(url_for('instructor.schedule_exception_add', section_id=section.id), section.subject_code, section.name) }}
+{% if not section.ended_at and upcoming|selectattr('type', 'defined')|selectattr('type', 'equalto', 'async')|list %}
+<div class="modal fade" id="regular-session-modal" tabindex="-1" aria-labelledby="regular-session-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="choice" value="regular">
+      <div class="modal-header">
+        <h2 class="modal-title h5 fw-bold" id="regular-session-title">Change to Regular</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2">
+          <div class="col-6"><label class="form-label" for="regular-start">Start time</label>
+            <input type="time" required class="form-control" name="start_time" id="regular-start"></div>
+          <div class="col-6"><label class="form-label" for="regular-end">End time (optional)</label>
+            <input type="time" class="form-control" name="end_time" id="regular-end"></div>
+        </div>
+        <div class="form-text">Automatic async marks will be removed when you save the regular session.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Save regular session</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+<script>
+  // the menu item carries the date; the pop-up asks for the title
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-async-day]");
+    if (!btn) return;
+    const modal = document.getElementById("async-day-modal"), form = modal.querySelector("form");
+    form.exception_date.value = btn.dataset.asyncDay;
+    form.title.value = "";
+    form.elements.start_time.value = btn.dataset.asyncTime;
+    modal.querySelector("[data-async-date-label]").textContent = btn.dataset.asyncLabel;
+    bootstrap.Modal.getOrCreateInstance(modal).show();
+  });
+  document.getElementById("async-day-modal").addEventListener("shown.bs.modal", (e) => e.target.querySelector("input[name=title]").focus());
+  document.getElementById("regular-session-modal")?.addEventListener("show.bs.modal", (event) => {
+    const form = event.target.querySelector("form");
+    const button = event.relatedTarget;
+    form.action = button.dataset.changeUrl;
+    form.elements.start_time.value = button.dataset.start;
+    form.elements.end_time.value = button.dataset.end;
+  });
+</script>
+
+<!-- Add session: floating card (opens from the "Add session" button) -->
+<div class="modal fade" id="add-session-modal" tabindex="-1" aria-labelledby="add-session-title" aria-hidden="true"
+     {% if errors %}data-open-on-load{% endif %}>
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('instructor.session_create', section_id=section.id) }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="add-session-title"><i class="bi bi-plus-square text-primary"></i> Add session</h2>
+          <div class="small text-muted">{{ section.subject_code }} · {{ section.name }} — becomes a new date column in the report.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col">
+            <label class="form-label" for="type">Type</label>
+            <select id="type" name="type" class="form-select" data-session-type>
+              {% for k, v in types.items() %}<option value="{{ k }}" {{ 'selected' if form.get('type', 'regular') == k }}>{{ v }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col" data-mode-field>
+            <label class="form-label" for="add-session-mode">Check-in mode</label>
+            <select id="add-session-mode" name="checkin_mode" class="form-select{% if errors.get('checkin_mode') %} is-invalid{% endif %}">
+              <option value="auto" {{ 'selected' if form.get('checkin_mode') != 'manual' }}>Automatic</option>
+              <option value="manual" {{ 'selected' if form.get('checkin_mode') == 'manual' }}>Manual</option>
+            </select>
+            {% if errors.get('checkin_mode') %}<div class="invalid-feedback">{{ errors.checkin_mode }}</div>{% endif %}
+          </div>
+        </div>
+        {{ field("session_date", "Date", form if form.get('session_date') else {'session_date': today}, errors, type="date", required=true) }}
+        <div class="row g-2">
+          <div class="col">{{ field("start_time", "Start", form, errors, type="time", required=true) }}</div>
+          <div class="col" data-end-time>{{ field("end_time", "End (optional)", form, errors, type="time") }}</div>
+        </div>
+        {{ field("title", "Title", form, errors, placeholder="e.g. Module 3 quiz") }}
+        <div class="alert alert-info small py-2 mb-0 d-none" data-async-note><i class="bi bi-house-door"></i>
+          <span>Async activities move to Ended at the completion time, or on the scheduled date if you leave it blank.</span></div>
+        <p class="form-text mb-0" data-auto-note>Automatic check-in follows the start time and the section’s check-in window.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon" data-submit-label><i class="bi bi-plus-square"></i> <span>Add session</span></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% elif tab == 'students' %}
+<div class="section-students-layout">
+  <div class="card mb-3 section-requests-card"><div class="card-body">
+    <div class="card-title-sm">Requests <span class="chip chip-brand">{{ join_requests|length }}</span></div>
+    {% for jr in join_requests %}
+      <div class="border-bottom py-3">
+        <div class="fw-semibold">{{ jr.last_name }}, {{ jr.first_name }} <span class="small text-muted">{{ jr.student_number }} · {{ jr|course_section }}</span></div>
+        {% if jr.reason %}<p class="small mb-2">{{ jr.reason }}</p>{% endif %}
+        <form method="post" action="{{ url_for('instructor.join_request_review', section_id=section.id, request_id=jr.id) }}" class="d-flex gap-2 mt-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-primary" name="decision" value="approve">Approve</button>
+          <button class="btn btn-sm btn-outline-secondary" name="decision" value="reject">Decline</button>
+        </form>
+      </div>
+    {% else %}<p class="small text-muted mb-0">No pending requests.</p>{% endfor %}
+  </div></div>
+  <div class="section-student-table-wrap">
+    <div class="card table-card section-students-card">
+      {% if students %}
+        <div class="table-responsive contained-table-scroll" role="region" aria-label="Student list" tabindex="0">
+          <table class="table table-modern table-clickable">
+            <thead><tr><th>Student</th><th>Student no.</th><th class="text-center" title="Present / Late / Absent">P · L · A</th><th>ID</th><th>Signature</th><th></th></tr></thead>
+            <tbody>
+              {% for st in students %}
+                {% set info_url = url_for('instructor.student_info', section_id=section.id, student_id=st.id) %}
+                <tr data-href="{{ info_url }}">
+                  <td>
+                    <a class="fw-semibold text-nowrap text-reset d-block" href="{{ info_url }}">{{ st.last_name }}, {{ st.first_name }}{% if st.middle_name %} {{ st.middle_name[0] }}.{% endif %}{% if st.suffix %} {{ st.suffix }}{% endif %}</a>
+                    {% set cs = st|course_section %}{% if cs %}<div class="small text-muted">{{ cs }}</div>{% endif %}
+                  </td>
+                  <td class="font-monospace small text-nowrap">{{ st.student_number }}</td>
+                  {% set sm = stats.get(st.id) %}
+                  <td class="text-center text-nowrap small">
+                    {% if sm %}<span class="text-success fw-semibold">{{ sm.present }}</span> ·
+                      <span class="text-warning fw-semibold">{{ sm.late }}</span> ·
+                      <span class="{{ 'text-danger fw-bold' if sm.absent else 'text-muted' }}">{{ sm.absent }}</span>
+                      {# drop rule (Settings): flag who reached the limit and who is one absence away #}
+                      {% set ds = drop_status(sm.absent, section.drop_absences) %}
+                      {% if ds == 'drop' %}<div><span class="chip chip-bad mt-1" title="Reached {{ section.drop_absences }} absences"><i class="bi bi-exclamation-octagon"></i> For dropping</span></div>
+                      {% elif ds == 'warn' %}<div><span class="chip chip-warn mt-1" title="One more absence reaches the limit of {{ section.drop_absences }}">1 absence left</span></div>{% endif %}
+                    {% endif %}
+                  </td>
+                  <td>{% if st.has_card %}<span class="chip chip-ok"><i class="bi bi-check2"></i>Yes</span>{% else %}<span class="chip chip-muted">None</span>{% endif %}</td>
+                  <td>{% if st.has_signature %}<span class="chip chip-ok"><i class="bi bi-check2"></i>Signed</span>
+                      {% elif st.must_resign %}<span class="chip chip-warn">Re-sign</span>
+                      {% else %}<span class="chip chip-warn">Missing</span>{% endif %}</td>
+                  <td class="text-end">
+                    <div class="dropdown">
+                      <button class="btn btn-sm btn-light" data-bs-toggle="dropdown" aria-label="Actions"><i class="bi bi-three-dots"></i></button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="{{ info_url }}"><i class="bi bi-person-vcard"></i> View student</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><form method="post" action="{{ url_for('instructor.students_drop', section_id=section.id, student_id=st.id) }}"
+                                  data-confirm="Drop {{ st.first_name }} {{ st.last_name }} from {{ section.name }}{% if sm %} ({{ sm.absent }} absence{{ '' if sm.absent == 1 else 's' }}){% endif %}? Their attendance records are kept and you can put them back from the Dropped list."
+                                  data-confirm-title="Drop student" data-confirm-ok="Drop student">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <button class="dropdown-item"><i class="bi bi-person-x"></i> Drop from class</button></form></li>
+                        <li><form method="post" action="{{ url_for('instructor.students_remove', section_id=section.id, student_id=st.id) }}"
+                                  data-confirm="Remove {{ st.first_name }} {{ st.last_name }} from {{ section.name }}? You can restore them from Recently deleted within 30 days.">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <button class="dropdown-item text-danger"><i class="bi bi-person-dash"></i> Remove from section</button></form></li>
+                      </ul>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty"><i class="bi bi-people"></i><h3>No students yet</h3>
+          <p class="mb-3">Students can join with the code <strong class="font-monospace">{{ section.join_code }}</strong>, or add them yourself.</p>
+          <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#add-students-modal">
+            <i class="bi bi-person-plus"></i> Add students</button></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Dropped students (dropped by the instructor or left by themselves): put one back -->
+{% if dropped %}
+<div class="modal fade" id="dropped-modal" tabindex="-1" aria-labelledby="dropped-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="dropped-title"><i class="bi bi-person-x text-primary"></i> Dropped students</h2>
+          <div class="small text-muted">No longer in {{ section.name }}. Their attendance records are kept.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% for d in dropped %}
+        <div class="d-flex align-items-center gap-2 py-2 {{ 'border-top' if not loop.first }}">
+          <div class="me-auto"><div class="fw-semibold">{{ d.last_name }}, {{ d.first_name }}</div>
+            <div class="small text-muted font-monospace">{{ d.student_number }}</div></div>
+          <form method="post" action="{{ url_for('instructor.students_restore', section_id=section.id, student_id=d.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-light btn-icon"><i class="bi bi-arrow-counterclockwise"></i> Put back</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Add students: floating card (opens from the "Add students" button) -->
+<div class="modal fade" id="add-students-modal" tabindex="-1" aria-labelledby="add-students-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('instructor.students_add', section_id=section.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="add-students-title"><i class="bi bi-person-plus text-primary"></i> Add students</h2>
+          <div class="small text-muted">{{ section.subject_code }} · {{ section.name }}</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="student_numbers">Student numbers</label>
+        <textarea id="student_numbers" name="student_numbers" class="form-control font-monospace" rows="6"
+                  placeholder="One per line, e.g.&#10;2026-0001&#10;2026-0002"></textarea>
+        <div class="form-text">You can paste a whole list. Commas and spaces work too.</div>
+        <div class="alert alert-info small py-2 mt-3 mb-0"><i class="bi bi-info-circle"></i>
+          <span>Students must create their account first. They can also join themselves with the code
+            <b class="font-monospace">{{ section.join_code }}</b>.</span></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-person-plus"></i> Add to {{ section.name }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% elif tab == 'schedule' %}
+{# same table style as the Students tab #}
+<div class="card table-card section-schedule-card">
+  {% if schedules %}
+    <div class="table-responsive contained-table-scroll" role="region" aria-label="Class schedule" tabindex="0">
+      <table class="table table-modern">
+        <thead><tr><th>Day</th><th>Time</th><th>Length</th><th>Room</th><th></th></tr></thead>
+        <tbody>
+          {% for sc in schedules %}
+            <tr>
+              <td>
+                <span class="fw-semibold">{{ sc.day_name }}</span>
+              </td>
+              <td class="text-nowrap">{{ sc.start_time|time12 }} – {{ sc.end_time|time12 }}</td>
+              <td class="small text-muted text-nowrap">{{ sc.length }}</td>
+              <td>{% if sc.room %}<span class="chip chip-muted"><i class="bi bi-geo-alt"></i>{{ sc.room }}</span>
+                  {% else %}<span class="small text-muted">—</span>{% endif %}</td>
+              <td class="text-end">
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-light" data-bs-toggle="dropdown" aria-label="Actions"><i class="bi bi-three-dots"></i></button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li><button type="button" class="dropdown-item" data-edit-schedule
+                                data-url="{{ url_for('instructor.schedule_edit', schedule_id=sc.id) }}"
+                                data-day="{{ sc.day_of_week }}" data-start="{{ sc.start_time }}"
+                                data-end="{{ sc.end_time }}" data-room="{{ sc.room or '' }}">
+                      <i class="bi bi-pencil"></i> Edit schedule</button></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><form method="post" action="{{ url_for('instructor.schedule_delete', schedule_id=sc.id) }}"
+                              data-confirm="Remove the {{ sc.day_name }} {{ sc.start_time|time12 }} schedule? Past sessions stay in the report. You can restore it from Recently deleted within 30 days.">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="dropdown-item text-danger"><i class="bi bi-trash"></i> Remove schedule</button></form></li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><i class="bi bi-calendar-plus"></i><h3>No schedule yet</h3>
+      <p class="mb-3">Add the days and times this section meets. Sessions are created automatically on those days.</p>
+      <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#add-schedule-modal">
+        <i class="bi bi-calendar-plus"></i> Add schedule</button></div>
+  {% endif %}
+</div>
+
+{% if exceptions %}
+<!-- no-class days: holidays, suspended classes ... skipped when sessions are auto-created -->
+<div class="card table-card mt-3 section-exceptions-card">
+  <div class="panel-head">
+    <div class="card-title-sm mb-0"><i class="bi bi-calendar-x"></i> No class days</div>
+    <span class="small text-muted ms-auto d-none d-sm-inline">Skipped when sessions are created automatically</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-modern">
+      <thead><tr><th>Date</th><th>Reason</th><th></th></tr></thead>
+      <tbody>
+        {% for ex in exceptions %}
+          <tr>
+            <td class="fw-semibold text-nowrap">{{ ex.exception_date|nicedate }}</td>
+            <td class="small">{{ ex.reason }}
+              {% if ex.mark_present %}<span class="chip chip-ok ms-1"><i class="bi bi-check2"></i> Everyone present</span>{% endif %}</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('instructor.schedule_exception_delete', exception_id=ex.id) }}"
+                    data-confirm="Remove the no-class mark on {{ ex.exception_date|nicedate }}? Sessions will be created for it again if it's still in your weekly schedule.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-light btn-icon"><i class="bi bi-x-lg"></i> Remove</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Mark no class: holiday, suspended classes ... -->
+<div class="modal fade" id="no-class-modal" tabindex="-1" aria-labelledby="no-class-title" aria-hidden="true"
+     {% if errors.get('exception_date') or errors.get('reason') %}data-open-on-load{% endif %}>
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" novalidate
+          action="{{ url_for('instructor.schedule_exception_add', section_id=section.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="no-class-title"><i class="bi bi-calendar-x text-primary"></i> Mark no class</h2>
+          <div class="small text-muted">{{ section.subject_code }} · {{ section.name }} — skip the weekly schedule for one date.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {{ field("exception_date", "Date", form, errors, type="date", required=true) }}
+        {{ field("reason", "Reason", form, errors, required=true, placeholder="e.g. Holiday") }}
+        <div class="d-flex flex-wrap gap-2 mb-3" data-quick-reasons>
+          {% for r in ('Holiday', 'Suspended classes', 'No class') %}
+            <button type="button" class="btn btn-sm btn-light">{{ r }}</button>
+          {% endfor %}
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="mark_present" value="1" id="mark-present">
+          <label class="form-check-label" for="mark-present">
+            Still mark everyone present for this date</label>
+          <div class="form-text">e.g. the class is covered together with another day, so it shouldn't count as missed.
+            Adds a date column to the report with everyone present; you can still change a student by hand after.</div>
+        </div>
+        {% if other_sections %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="all_sections" value="1" id="all-sections">
+            <label class="form-check-label" for="all-sections">
+              Mark it on all my sections too ({{ other_sections + 1 }} total)</label>
+          </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-calendar-x"></i> Mark no class</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add / edit schedule: one floating card. "Add schedule" opens it empty; "Edit schedule"
+     (⋯ menu) opens it filled in and saves to that schedule instead. -->
+{% set editing = form.get('schedule_id') %}
+{% set add_url = url_for('instructor.schedule_add', section_id=section.id) %}
+<div class="modal fade" id="add-schedule-modal" tabindex="-1" aria-labelledby="add-schedule-title" aria-hidden="true"
+     data-add-url="{{ add_url }}"
+     {% if errors and (errors.get('schedule_rows') or errors.get('day_of_week') or errors.get('start_time') or errors.get('end_time') or errors.get('room')) %}data-open-on-load{% endif %}>
+  {# one block per class day; "Add more schedule" copies the <template> below #}
+  {% macro sched_row(n, row, errs) %}
+    <div class="sched-row" data-sched-row>
+      <div class="sched-row-head">
+        <span class="sched-row-title">Schedule <span data-row-number>{{ n }}</span></span>
+        <button type="button" class="btn btn-sm btn-light btn-icon" data-remove-row title="Remove this schedule"><i class="bi bi-trash"></i> Remove</button>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Day
+          <select name="day_of_week" class="form-select mt-1{% if errs.get('day_of_week') %} is-invalid{% endif %}">
+            {% for d in days %}<option value="{{ loop.index0 }}" {{ 'selected' if row.get('day_of_week')|string == loop.index0|string }}>{{ d }}</option>{% endfor %}
+          </select>
+          {% if errs.get('day_of_week') %}<div class="invalid-feedback">{{ errs.day_of_week }}</div>{% endif %}
+        </label>
+      </div>
+      <div class="row g-2">
+        {% for name, label in [('start_time', 'Start'), ('end_time', 'End')] %}
+        <div class="col-6 mb-3">
+          <label class="form-label">{{ label }} <span class="text-danger">*</span>
+            <input type="time" name="{{ name }}" required value="{{ row.get(name) or '' }}"
+                   class="form-control mt-1{% if errs.get(name) %} is-invalid{% endif %}">
+            {% if errs.get(name) %}<div class="invalid-feedback">{{ errs[name] }}</div>{% endif %}
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+      <label class="form-label">Room (optional)
+        <input type="text" name="room" class="form-control mt-1" placeholder="e.g. Room 204" value="{{ row.get('room') or '' }}">
+      </label>
+    </div>
+  {% endmacro %}
+  {% set sched_rows = form.get('schedule_rows') or [form] %}
+  {% set sched_errors = errors.get('schedule_rows') or {0: errors} %}
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <form class="modal-content" method="post" novalidate
+          action="{{ url_for('instructor.schedule_edit', schedule_id=editing|int) if editing else add_url }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="add-schedule-title"><i class="bi bi-calendar-plus text-primary"></i>
+            <span data-mode-title>{{ 'Edit schedule' if editing else 'Add schedule' }}</span></h2>
+          <div class="small text-muted">{{ section.subject_code }} · {{ section.name }} — a day this section meets every week.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div data-sched-rows>
+          {% for row in sched_rows %}{{ sched_row(loop.index, row, sched_errors.get(loop.index0) or {}) }}{% endfor %}
+        </div>
+        <template data-sched-template>{{ sched_row(1, {}, {}) }}</template>
+        <button type="button" class="btn btn-light btn-icon w-100 mt-3" data-add-row {% if editing %}hidden{% endif %}>
+          <i class="bi bi-plus-lg"></i> Add more schedule</button>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-check2"></i>
+          <span data-mode-button>{{ 'Save changes' if editing else 'Add schedule' }}</span></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% include 'instructor/_vacation_form.html' %}
+{% else %}
+{% include 'instructor/_section_settings.html' %}
+{% endif %}
+</div>
+
+<!-- choose the dates for the report (opened by "Download report" under the join code) -->
+<div class="modal fade" id="report-modal" tabindex="-1" aria-labelledby="report-title" aria-hidden="true">
+  {# wide on a computer (class dates | blank dates + options); full screen, one column on a phone #}
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-md-down report-dialog">
+    <form class="modal-content" method="get" action="{{ url_for('instructor.section_report', section_id=section.id) }}" data-report-form>
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="report-title"><i class="bi bi-file-earmark-pdf text-primary"></i> Attendance report</h2>
+          <div class="small text-muted">{{ section.subject_code }} · {{ section.name }} — pick the columns for the report.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% set regular = report_sessions|rejectattr('type', 'equalto', 'async')|list %}
+        {% set asyncs = report_sessions|selectattr('type', 'equalto', 'async')|list %}
+        <div class="report-grid">
+        <section class="report-panel">
+        <div class="report-panel-title"><i class="bi bi-calendar-check"></i> Class dates</div>
+        <div class="d-flex align-items-center mb-2">
+          <div class="fw-semibold small text-uppercase text-muted">Dates</div>
+          <span class="ms-auto small text-muted"><b data-count="regular">0</b> picked · {{ report_per_page[0] }} per page</span>
+        </div>
+        <div class="pick-list report-scroll mb-3">
+          {% for s in regular %}
+            <label class="pick-row">
+              <input type="checkbox" class="form-check-input" name="s" value="{{ s.id }}" data-kind="regular"
+                     {{ 'checked' if s.default }}>
+              <span class="fw-semibold">{{ s.session_date|nicedate }}</span>
+              <span class="small text-muted">{{ s.start_time|time12 if s.start_time else '' }}{% if s.type == 'makeup' %} · Make-up{% endif %}</span>
+              {% if s.phase in ('present', 'late', 'checkout') %}<span class="chip chip-ok ms-auto"><span class="dot pulse"></span>Current</span>{% endif %}
+              <span class="{{ '' if s.phase in ('present', 'late', 'checkout') else 'ms-auto' }} small text-muted">{{ s.counts.present + s.counts.late }}/{{ s.counts.total }}</span>
+            </label>
+          {% else %}<div class="small text-muted px-2 py-2">No ended or current classes yet. Upcoming classes can't be in the report.</div>{% endfor %}
+        </div>
+        {% if asyncs %}
+          <div class="d-flex align-items-center mb-2">
+            <div class="fw-semibold small text-uppercase text-muted">Async activities (extra columns)</div>
+            <span class="ms-auto small text-muted"><b data-count="async">0</b> picked · {{ report_per_page[1] }} per page</span>
+          </div>
+          <div class="pick-list report-scroll">
+            {% for s in asyncs %}
+              <label class="pick-row">
+                <input type="checkbox" class="form-check-input" name="s" value="{{ s.id }}" data-kind="async"
+                       {{ 'checked' if s.default }}>
+                <span class="fw-semibold">{{ s.session_date|nicedate }}</span>
+                <span class="small text-muted text-truncate">{{ s.title or 'Async' }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        {% endif %}
+        </section>
+
+        <section class="report-panel">
+        {# blank dates: empty columns with every name, to print and take attendance on paper #}
+        <div class="report-panel-title"><i class="bi bi-pencil-square"></i> Blank dates
+          <span class="ms-auto small text-muted fw-normal"><b data-count="blank">0</b> added</span></div>
+        <div class="small text-muted mb-2">Adds an empty column for each date, with every student's name, so you can print
+          the sheet and have students sign by hand.</div>
+        <div class="d-grid gap-2 mb-2" data-blank-rows></div>
+        <template data-blank-template>
+          <div class="d-flex gap-2 align-items-center" data-blank-row>
+            <input type="date" name="d" class="form-control" aria-label="Blank date" required>
+            <button type="button" class="btn btn-light btn-icon flex-shrink-0" data-remove-blank aria-label="Remove this date">
+              <i class="bi bi-x-lg"></i></button>
+          </div>
+        </template>
+        <button type="button" class="btn btn-light btn-sm btn-icon" data-add-blank><i class="bi bi-plus-lg"></i> Add date</button>
+
+        <div class="report-panel-title mt-4"><i class="bi bi-sliders"></i> Print options</div>
+        <div class="fw-semibold small text-uppercase text-muted mb-2">Department</div>
+        <label class="pick-row pick-list {{ 'is-off' if not current_user.department }}">
+          <input type="checkbox" class="form-check-input" name="dept" value="1"
+                 {{ 'disabled' if not current_user.department }} {{ 'checked' if current_user.department }}>
+          <span>Print my department on the <b>College of</b> line{% if current_user.department %}: {{ current_user.department }}{% endif %}</span>
+        </label>
+        <div class="small text-muted mt-1">
+          {% if current_user.department %}Leave it off to keep the line blank and write it by hand.
+          {% else %}You haven't chosen a department yet, so the line stays blank. Choose it in <a href="{{ url_for('account.index') }}">My account</a>.{% endif %}
+        </div>
+
+        <div class="fw-semibold small text-uppercase text-muted mt-3 mb-2">Instructor signature</div>
+        <label class="pick-row pick-list {{ 'is-off' if not current_user.signature_path }}">
+          <input type="checkbox" class="form-check-input" name="sign" value="1"
+                 {{ 'disabled' if not current_user.signature_path }}
+                 {{ 'checked' if current_user.signature_path and current_user.report_sign_default }}>
+          <span>Put my saved signature in the <b>Prof./Instructor's Signature</b> row</span>
+        </label>
+        <div class="small text-muted mt-1">
+          {% if current_user.signature_path %}Leave it off to keep the row blank and sign the printed sheet by hand.
+          {% else %}You haven't saved a signature yet — the row stays blank. Add one in <a href="{{ url_for('account.index') }}">My account</a>.{% endif %}
+        </div>
+        </section>
+        </div>
+      </div>
+      <div class="modal-footer report-footer">
+        <div class="me-auto">
+          <div class="small text-danger d-none" data-pick-error>Pick at least one date.</div>
+          <div class="small text-muted" data-page-note
+               data-dates-per-page="{{ report_per_page[0] }}" data-async-per-page="{{ report_per_page[1] }}"
+               data-rows-per-page="{{ report_per_page[2] }}" data-students="{{ students|length }}"></div>
+        </div>
+        <button class="btn btn-light btn-icon" formtarget="_blank" data-needs-pick><i class="bi bi-eye"></i> Preview</button>
+        <button class="btn btn-primary btn-icon" name="dl" value="1" data-needs-pick><i class="bi bi-download"></i> Download PDF</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const select = document.getElementById('join-approval');
+    const hint = document.querySelector('[data-approval-hint]');
+    if (select && hint) select.addEventListener('change', () => {
+      hint.textContent = select.selectedOptions[0].dataset.hint || '';
+    });
+  })();
+</script>
+<script>
+  // a pop-up whose form came back with errors opens again by itself
+  // Report pop-up: at most N dates + M async; buttons disabled when nothing is picked
+  (function () {
+    const form = document.querySelector("[data-report-form]");
+    if (!form) return;
+    const limits = { regular: {{ report_limits[0] }}, async: {{ report_limits[1] }}, blank: {{ report_limits[2] }} };
+    // "Blank dates": + Add date / x remove, like the rows in Add schedule
+    const blankRows = form.querySelector("[data-blank-rows]");
+    const blankTpl = form.querySelector("[data-blank-template]");
+    const addBlank = form.querySelector("[data-add-blank]");
+    const blankInputs = () => [...blankRows.querySelectorAll('input[name="d"]')];
+    addBlank.addEventListener("click", () => {
+      blankRows.appendChild(blankTpl.content.cloneNode(true));
+      const inputs = blankInputs();
+      inputs[inputs.length - 1].focus();
+      sync();
+    });
+    blankRows.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-blank]");
+      if (btn) { btn.closest("[data-blank-row]").remove(); sync(); }
+    });
+    blankRows.addEventListener("input", sync);
+    function sync() {
+      let total = 0;
+      const blanks = blankInputs().filter((i) => i.value).length;
+      form.querySelector('[data-count="blank"]').textContent = blanks;
+      addBlank.hidden = blankInputs().length >= limits.blank;
+      total += blanks;
+      for (const kind of ["regular", "async"]) {
+        const boxes = [...form.querySelectorAll(`input[data-kind="${kind}"]`)];
+        const n = boxes.filter((b) => b.checked).length;
+        total += n;
+        const counter = form.querySelector(`[data-count="${kind}"]`);
+        if (counter) counter.textContent = n;
+        boxes.forEach((b) => { b.disabled = !b.checked && n >= limits[kind]; b.closest(".pick-row").classList.toggle("is-off", b.disabled); });
+      }
+      form.querySelectorAll("[data-needs-pick]").forEach((b) => (b.disabled = total === 0));
+      form.querySelector("[data-pick-error]").classList.toggle("d-none", total > 0);
+      // "3 pages": every 6 dates (or 3 async) and every 40 students start a new sheet
+      const note = form.querySelector("[data-page-note]");
+      if (note) {
+        const d = note.dataset, count = (k) => form.querySelectorAll(`input[data-kind="${k}"]:checked`).length;
+        const colPages = Math.max(1, Math.ceil((count("regular") + blanks) / d.datesPerPage), Math.ceil(count("async") / d.asyncPerPage));
+        const rowPages = Math.max(1, Math.ceil(d.students / d.rowsPerPage));
+        const pages = colPages * rowPages;
+        note.innerHTML = total ? `<i class="bi bi-files"></i> The PDF will have <b>${pages} page${pages > 1 ? "s" : ""}</b>`
+          + ` (${d.datesPerPage} dates and ${d.rowsPerPage} students per sheet).` : "";
+      }
+    }
+    form.addEventListener("change", sync);
+    sync();
+  })();
+  document.querySelectorAll(".modal[data-open-on-load]").forEach((m) => bootstrap.Modal.getOrCreateInstance(m).show());
+
+  // Schedule pop-up: "Edit schedule" fills it in and saves to that schedule;
+  // "Add schedule" (data-bs-toggle buttons) resets it to an empty new one.
+  (function () {
+    const modalEl = document.getElementById("add-schedule-modal");
+    if (!modalEl) return;
+    const form = modalEl.querySelector("form");
+    const rowsEl = modalEl.querySelector("[data-sched-rows]");
+    const template = modalEl.querySelector("[data-sched-template]");
+    const addBtn = modalEl.querySelector("[data-add-row]");
+    const MAX_ROWS = 7;
+    let editing = {{ 'true' if editing else 'false' }};
+    const rows = () => [...rowsEl.querySelectorAll("[data-sched-row]")];
+    const field = (row, name) => row.querySelector(`[name="${name}"]`);
+    // number the rows, hide "Remove" when there is only one, stop at 7 rows
+    const refresh = () => {
+      const list = rows();
+      list.forEach((row, i) => {
+        row.querySelector("[data-row-number]").textContent = i + 1;
+        row.querySelector(".sched-row-head").hidden = list.length === 1;
+      });
+      addBtn.hidden = editing || list.length >= MAX_ROWS;
+      const many = list.length > 1;
+      modalEl.querySelector("[data-mode-title]").textContent = editing ? "Edit schedule" : "Add schedule";
+      modalEl.querySelector("[data-mode-button]").textContent =
+        editing ? "Save changes" : (many ? `Add ${list.length} schedules` : "Add schedule");
+    };
+    const addRow = () => {
+      const last = rows().at(-1);
+      rowsEl.appendChild(template.content.cloneNode(true));
+      const row = rows().at(-1);
+      // start from the previous row: next day, same time and room (the usual MWF / TTh pattern)
+      if (last) {
+        field(row, "day_of_week").value = (Number(field(last, "day_of_week").value) + 1) % 7;
+        ["start_time", "end_time", "room"].forEach((n) => { field(row, n).value = field(last, n).value; });
+      }
+      return row;
+    };
+    const resetToOne = () => {
+      rows().slice(1).forEach((row) => row.remove());
+      form.reset();
+      const row = rows()[0];
+      field(row, "day_of_week").value = "0";
+      ["start_time", "end_time", "room"].forEach((n) => { field(row, n).value = ""; });
+      form.querySelectorAll(".is-invalid").forEach((el) => el.classList.remove("is-invalid"));
+      form.querySelectorAll(".invalid-feedback").forEach((el) => el.remove());
+    };
+    addBtn.addEventListener("click", () => {
+      const row = addRow();
+      refresh();
+      row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      field(row, "day_of_week").focus({ preventScroll: true });
+    });
+    rowsEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-row]");
+      if (!btn || rows().length === 1) return;
+      btn.closest("[data-sched-row]").remove();
+      refresh();
+    });
+    document.querySelectorAll("[data-edit-schedule]").forEach((btn) => btn.addEventListener("click", () => {
+      resetToOne();
+      const row = rows()[0];
+      form.action = btn.dataset.url;
+      field(row, "day_of_week").value = btn.dataset.day;
+      field(row, "start_time").value = btn.dataset.start;
+      field(row, "end_time").value = btn.dataset.end;
+      field(row, "room").value = btn.dataset.room;
+      editing = true;
+      refresh();
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }));
+    document.querySelectorAll('[data-bs-target="#add-schedule-modal"]').forEach((btn) => btn.addEventListener("click", () => {
+      form.action = modalEl.dataset.addUrl;
+      resetToOne();
+      editing = false;
+      refresh();
+    }));
+    refresh();
+  })();
+
+  // No-class pop-up: quick chips fill the reason field, min date = today, reset when reopened fresh
+  (function () {
+    const modalEl = document.getElementById("no-class-modal");
+    if (!modalEl) return;
+    const form = modalEl.querySelector("form"), reason = form.reason;
+    modalEl.querySelector("[data-quick-reasons]").querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => { reason.value = btn.textContent.trim(); reason.focus(); });
+    });
+    form.exception_date.min = "{{ today }}";
+    document.querySelectorAll('[data-bs-target="#no-class-modal"]').forEach((btn) => btn.addEventListener("click", () => {
+      if (!modalEl.hasAttribute("data-open-on-load")) {
+        form.reset();
+        form.querySelectorAll(".is-invalid").forEach((el) => el.classList.remove("is-invalid"));
+      }
+    }));
+  })();
+</script>
+<script>
+  // Async uses one completion time instead of a check-in window.
+  (function () {
+    const modalEl = document.getElementById("add-session-modal");
+    if (!modalEl) return;
+    const form = modalEl.querySelector("form");
+    const sel = form.querySelector("[data-session-type]");
+    const startLabel = form.querySelector("label[for=start_time]");
+    const endTime = form.querySelector("[data-end-time]");
+    const modeField = form.querySelector("[data-mode-field]");
+    const mode = form.querySelector("[name=checkin_mode]");
+    const titleLabel = form.querySelector("label[for=title]");
+    const asyncNote = form.querySelector("[data-async-note]");
+    const autoNote = form.querySelector("[data-auto-note]");
+    const btn = form.querySelector("[data-submit-label]");
+
+    function sync() {
+      const isAsync = sel.value === "async";
+      startLabel.innerHTML = isAsync ? "Completion time (optional)" : 'Start <span class="text-danger">*</span>';
+      form.elements.start_time.required = !isAsync;
+      endTime.classList.toggle("d-none", isAsync);
+      form.elements.end_time.disabled = isAsync;
+      modeField.classList.toggle("d-none", isAsync);
+      mode.disabled = isAsync;
+      asyncNote.classList.toggle("d-none", !isAsync);
+      autoNote.classList.toggle("d-none", isAsync || mode.value !== "auto");
+      titleLabel.innerHTML = isAsync ? 'Title <span class="text-danger">*</span>' : "Title (optional)";
+      const [icon, text] = isAsync ? ["house-door", "Add async activity"] : ["plus-square", "Add session"];
+      btn.innerHTML = `<i class="bi bi-${icon}"></i> <span>${text}</span>`;
+    }
+    sel.addEventListener("change", sync);
+    mode.addEventListener("change", sync);
+    sync();
+  })();
+</script>
+<script>
+  // Live example: "For a 7:00 class: opens 6:55, late from 7:15, closes 7:30"
+  (function () {
+    const ex = document.getElementById("window-example");
+    if (!ex) return;
+    const val = (n) => parseInt(document.querySelector(`[name=${n}]`).value || "0", 10);
+    const fmt = (m) => { const t = 420 + m; return Math.floor(t / 60) + ":" + String(((t % 60) + 60) % 60).padStart(2, "0"); };
+    function update() {
+      ex.textContent = `For a 7:00 class: opens ${fmt(-val("default_open_before_minutes"))}, ` +
+        `late from ${fmt(val("default_grace_minutes"))}, closes ${fmt(val("default_close_after_minutes"))}.`;
+    }
+    document.querySelectorAll("input[type=number]").forEach((el) => el.addEventListener("input", update));
+    update();
+  })();
+</script>
+{% endblock %}

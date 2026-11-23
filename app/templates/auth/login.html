@@ -1,0 +1,39 @@
+{% extends "auth_base.html" %}
+{% block title %}{{ 'Instructor' if is_prof_site else 'Student' }} login{% endblock %}
+{% block content %}
+<span class="role-tag"><i class="bi bi-{{ 'person-workspace' if is_prof_site else 'mortarboard' }}"></i>
+  {{ 'Instructor portal' if is_prof_site else 'Student portal' }}</span>
+<h1>{{ 'Instructor' if is_prof_site else 'Student' }} Login</h1>
+<p class="sub">{{ 'Manage your classes and attendance.' if is_prof_site else 'Welcome back! Sign in to check in and see your classes.' }}</p>
+
+{% if error %}<div class="alert alert-danger"><i class="bi bi-x-circle-fill"></i><span>{{ error }}</span></div>{% endif %}
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="mb-3">
+    <label class="form-label" for="login">{{ 'Username' if is_prof_site else 'Student number' }}</label>
+    <div class="input-icon">
+      <i class="bi bi-{{ 'person' if is_prof_site else 'person-vcard' }}"></i>
+      <input id="login" name="login" class="form-control" value="{{ login_value }}" required autofocus
+             autocomplete="username" placeholder="{{ 'e.g. jdelacruz' if is_prof_site else 'e.g. 2026-0001' }}">
+    </div>
+  </div>
+  <div class="mb-4">
+    <div class="d-flex justify-content-between align-items-baseline">
+      <label class="form-label" for="password">Password</label>
+      <a class="small fw-semibold" href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
+    </div>
+    <div class="input-icon position-relative">
+      <i class="bi bi-lock"></i>
+      <input id="password" name="password" type="password" class="form-control pe-5" required autocomplete="current-password">
+      <button type="button" class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-1 text-muted"
+              data-toggle-password="password" aria-label="Show password"><i class="bi bi-eye"></i></button>
+    </div>
+  </div>
+  <button class="btn btn-primary w-100 py-2 btn-icon justify-content-center">Log in <i class="bi bi-arrow-right"></i></button>
+</form>
+
+<p class="auth-switch">No account yet?
+  <a href="{{ url_for('auth.register_instructor' if is_prof_site else 'auth.register_student') }}" class="fw-semibold">
+    Register as {{ 'instructor' if is_prof_site else 'student' }}</a></p>
+{% endblock %}

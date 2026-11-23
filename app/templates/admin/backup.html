@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Backup & restore{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Backup &amp; restore</h1>
+    <div class="sub">Save everything in one file, and bring it back if the device or its SD card fails.</div></div>
+</div>
+
+<div class="cq cq-2" style="align-items: start">
+  <div class="card"><div class="card-body">
+    <div class="card-title-sm"><i class="bi bi-download"></i> Download a backup</div>
+    <p class="small text-muted">One .zip file with all accounts, classes, attendance records, settings, profile pictures and signatures.
+      Keep it somewhere other than this device (your laptop, a flash drive).</p>
+    <div class="setting-row"><div class="me-auto">Last backup downloaded</div>
+      {% if backup.last %}<span class="chip {{ 'chip-warn' if backup.overdue else 'chip-ok' }}">{{ backup.last[:10]|nicedate }}
+        · {{ 'today' if backup.days == 0 else (backup.days ~ ' day' ~ ('' if backup.days == 1 else 's') ~ ' ago') }}</span>
+      {% else %}<span class="chip chip-warn">Never</span>{% endif %}</div>
+    {% if backup.overdue %}<div class="small text-warning-emphasis mt-2"><i class="bi bi-exclamation-triangle"></i>
+      Download one now. A backup every {{ remind_days }} days is a good habit.</div>{% endif %}
+    <form method="post" action="{{ url_for('admin.backup_download') }}" class="mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary btn-icon"><i class="bi bi-download"></i> Download backup</button>
+    </form>
+    <div class="small text-muted mt-3"><i class="bi bi-shield-lock"></i> The file holds everyone's records. Treat it like the device itself.</div>
+  </div></div>
+
+  <div class="card border-danger-subtle"><div class="card-body">
+    <div class="card-title-sm text-danger"><i class="bi bi-arrow-counterclockwise text-danger"></i> Restore from a backup</div>
+    <p class="small text-muted">Replaces <b>everything</b> on this device with what is in the file. Anything recorded after that backup
+      was made is lost. The current state is saved on the device first, so a wrong file can be undone.</p>
+    <form method="post" action="{{ url_for('admin.backup_restore') }}" enctype="multipart/form-data" novalidate
+          data-confirm="Replace everything on this device with this backup? Records made after the backup will be lost."
+          data-confirm-title="Restore backup" data-confirm-ok="Restore">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="mb-3">
+        <label class="form-label" for="backup-file">Backup file (.zip)</label>
+        <input type="file" id="backup-file" name="file" accept=".zip,application/zip" required
+               class="form-control{% if errors.get('file') %} is-invalid{% endif %}">
+        {% if errors.get('file') %}<div class="invalid-feedback">{{ errors.file }}</div>
+        {% else %}<div class="form-text">Up to {{ max_mb }} MB.</div>{% endif %}
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="backup-password">Your admin password</label>
+        <input type="password" id="backup-password" name="password" autocomplete="current-password" required
+               class="form-control{% if errors.get('password') %} is-invalid{% endif %}">
+        {% if errors.get('password') %}<div class="invalid-feedback">{{ errors.password }}</div>{% endif %}
+      </div>
+      <div class="form-check mb-3">
+        <input class="form-check-input{% if errors.get('confirm') %} is-invalid{% endif %}" type="checkbox" id="backup-confirm" name="confirm" value="1">
+        <label class="form-check-label small" for="backup-confirm">I understand this replaces all current data.</label>
+        {% if errors.get('confirm') %}<div class="invalid-feedback">{{ errors.confirm }}</div>{% endif %}
+      </div>
+      <button class="btn btn-outline-danger btn-icon"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+    </form>
+    {% if backup.safety %}
+      <div class="small text-muted mt-3">Safety copies on the device (data/backups), newest first:</div>
+      {% for f in backup.safety %}<div class="small font-monospace">{{ f.name }}</div>{% endfor %}
+    {% endif %}
+  </div></div>
+</div>
+{% endblock %}

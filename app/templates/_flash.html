@@ -1,0 +1,20 @@
+{# Messages after an action.
+   - success: NOT shown. The page itself already shows the result (check-in card turns blue,
+     the new student appears in the list...), so a green banner is just noise.
+   - info / warning / danger: a small floating toast in the corner that fades out by itself.
+     It floats above the page, so nothing gets pushed down. #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages|map('first')|reject('equalto', 'success')|list %}
+    <div class="toast-stack" aria-live="polite">
+      {% for category, msg in messages if category != 'success' %}
+        {% set cat = 'info' if category == 'message' else category %}
+        {% set icon = {'warning': 'exclamation-triangle-fill', 'danger': 'x-circle-fill'}.get(cat, 'info-circle-fill') %}
+        <div class="app-toast app-toast-{{ cat }}" role="{{ 'alert' if cat in ('warning', 'danger') else 'status' }}"
+             data-autohide="{{ 7000 if cat in ('warning', 'danger') else 4000 }}">
+          <i class="bi bi-{{ icon }}"></i><span>{{ msg }}</span>
+          <button type="button" class="btn-close" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}

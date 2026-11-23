@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+{% from "_macros.html" import avatar, field %}
+{% block title %}My account{% endblock %}
+{% block content %}
+{% set is_student = current_user.role == 'student' %}
+<div class="card mb-3">
+  <div class="profile-cover"></div>
+  <div class="profile-head">
+    <div class="profile-avatar">
+      <button type="button" class="profile-avatar-open" data-bs-toggle="modal"
+              data-bs-target="{{ '#profile-picture-modal' if profile_photo_revision else '#profile-photo-modal' }}"
+              aria-label="{{ 'View profile picture' if profile_photo_revision else 'Add profile picture' }}">
+        {{ avatar(current_user, 'avatar-lg', profile_photo_revision) }}
+      </button>
+      <button type="button" class="profile-photo-edit" data-bs-toggle="modal" data-bs-target="#profile-photo-modal"
+              aria-label="Edit profile picture" title="Edit profile picture">
+        <i class="bi bi-pencil-fill" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="me-auto pb-1">
+      <h1>{% if current_user.title %}{{ current_user.title }} {% endif %}{{ current_user.first_name }}
+        {% if current_user.middle_name %}{{ current_user.middle_name[0] }}. {% endif %}{{ current_user.last_name }}{% if current_user.suffix %} {{ current_user.suffix }}{% endif %}</h1>
+      <div class="meta mt-1">
+        {% if is_student %}
+          <span><i class="bi bi-person-vcard"></i><span class="font-monospace">{{ current_user.student_number }}</span></span>
+          {% set cs = current_user|course_section %}{% if cs %}<span><i class="bi bi-mortarboard"></i>{{ cs }}</span>{% endif %}
+        {% else %}
+          <span><i class="bi bi-at"></i>{{ current_user.username }}</span>
+          {% if current_user.department %}<span><i class="bi bi-building"></i>{{ current_user.department }}</span>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+    <span class="chip chip-brand mb-2"><i class="bi bi-{{ 'mortarboard' if is_student else 'person-workspace' }}"></i>{{ current_user.role|capitalize }}</span>
+  </div>
+</div>
+
+{# Attendance ID on the side (first when stacked), profile + password as the main column.
+   When stacked (phones): Attendance ID, profile, password, then Backup codes, and Delete my account last. #}
+<div class="cq cq-side account-grid">
+  <!-- attendance ID: what actually matters for attendance -->
+  <div>
+    {# on phones: folded, unless something here still needs doing (no card / no signature) #}
+    {% set id_todo = is_student and (not masked_card or not current_user.signature_path or current_user.must_resign) %}
+    {% if current_user.role != 'admin' %}
+    <div class="card"><div class="card-body">
+      <details class="fold" open data-fold {% if id_todo %}data-fold-open{% endif %}>
+      <summary class="card-title-sm"><i class="bi bi-person-badge"></i> Attendance ID</summary>
+
+      {% if is_student %}
+        <div class="id-row">
+          <div class="stat-icon {{ 'ok' if masked_card else 'warn' }}"><i class="bi bi-credit-card-2-front"></i></div>
+          <div class="me-auto">
+            <div class="fw-semibold">School ID</div>
+            <div class="small text-muted">{{ 'Tap it on the reader to check in.' if masked_card else 'Not registered yet.' }}</div>
+          </div>
+          {% if masked_card %}<span class="chip chip-ok font-monospace">{{ masked_card }}</span>
+          {% else %}<button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#card-modal">Register card</button>{% endif %}
+        </div>
+        {% if masked_card %}<div class="small text-muted pb-2">Lost your card? Ask the admin to remove it, then register a new one here.</div>{% endif %}
+      {% endif %}
+
+      <div class="id-row align-items-start">
+        <div class="stat-icon {{ 'ok' if current_user.signature_path and not current_user.must_resign else 'warn' }}"><i class="bi bi-pen"></i></div>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">Signature</div>
+          {% if current_user.signature_path %}
+            <img class="signature-preview my-2" alt="Your signature"
+                 src="{{ url_for('auth.signature_image', user_id=current_user.id) }}">
+            <div class="small text-muted">
+              {% if current_user.signature_signed_at %}Signed {{ current_user.signature_signed_at[:10] }}. {% endif %}
+              {{ 'Printed on your attendance reports.' if is_student else 'Printed on reports you prepare.' }}</div>
+          {% else %}
+            <div class="small text-muted">{{ 'No signature yet.' if is_student else 'Optional. Add one to sign the reports you prepare.' }}</div>
+          {% endif %}
+          {% if can_change_signature %}
+            <a class="btn btn-sm btn-outline-primary mt-2" href="{{ url_for('auth.signature') }}">
+              {{ 'Update signature' if current_user.signature_path else 'Draw signature' }}</a>
+          {% else %}
+            <div class="small text-muted mt-2"><i class="bi bi-lock"></i> To change it, ask the admin to reset it.</div>
+          {% endif %}
+        </div>
+      </div>
+      </details>
+    </div></div>
+
+    {% endif %}
+    {% if codes is not none %}
+    <!-- backup codes (instructors): the way back in if the password is forgotten -->
+    <div class="card mt-3 account-codes"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-key"></i> Backup codes</div>
+      <div class="id-row align-items-start">
+        <div class="stat-icon {{ 'ok' if codes.unused >= 3 else 'warn' }}"><i class="bi bi-key-fill"></i></div>
+        <div class="flex-grow-1">
+          {% if codes.total %}
+            <div class="fw-semibold">{{ codes.unused }} of {{ codes.total }} unused</div>
+            <div class="small text-muted">Made {{ codes.created_at[:10]|nicedate(true) }}.
+              {% if codes.unused < 3 %}Running low, generate a new set.{% else %}Use one on <b>Forgot password?</b> if you get locked out.{% endif %}</div>
+          {% else %}
+            <div class="fw-semibold">No backup codes yet</div>
+            <div class="small text-muted">Without them you can't recover your account if you forget your password.</div>
+          {% endif %}
+          <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-bs-toggle="modal" data-bs-target="#codes-modal">
+            Generate new codes</button>
+        </div>
+      </div>
+    </div></div>
+    {% endif %}
+    {# delete my own account: under the backup codes, in the left column #}
+    {% if current_user.role in ('student', 'instructor') %}
+    <div class="card border-danger-subtle mt-3" id="delete-account"><div class="card-body">
+      <div>
+        <div class="card-title-sm text-danger mb-1"><i class="bi bi-exclamation-octagon text-danger"></i> Delete my account</div>
+        <div class="small text-muted">You will be logged out and can't log in again.
+          {% if current_user.role == 'instructor' %}Your subjects are archived, so no more classes are scheduled.
+          {% else %}You are removed from your classes' lists.{% endif %}
+          The admin can restore the account if it was a mistake.</div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-danger btn-icon mt-2" data-bs-toggle="modal" data-bs-target="#delete-account-modal">
+        <i class="bi bi-trash"></i> Delete my account</button>
+    </div></div>
+    {% endif %}
+  </div>
+
+  <div>
+    <!-- profile -->
+    <div class="card mb-3"><div class="card-body">
+      <details class="fold" open data-fold {% if profile_errors %}data-fold-open{% endif %}>
+      <summary class="card-title-sm"><i class="bi bi-person-lines-fill"></i> Profile</summary>
+      <form method="post" action="{{ url_for('account.profile') }}" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if is_student %}
+          <div class="row g-2">
+            <div class="col-sm-7 mb-3">
+              <label class="form-label">Full name</label>
+              <input class="form-control" disabled value="{{ current_user.last_name }}, {{ current_user.first_name }}{% if current_user.middle_name %} {{ current_user.middle_name }}{% endif %}{% if current_user.suffix %} {{ current_user.suffix }}{% endif %}">
+            </div>
+            <div class="col-sm-5 mb-3">
+              <label class="form-label">Student number</label>
+              <input class="form-control font-monospace" value="{{ current_user.student_number }}" disabled>
+            </div>
+          </div>
+          <div class="alert alert-info small py-2 mb-3"><i class="bi bi-lock"></i>
+            <span>Your name and student number are printed on official attendance reports, so only the admin can correct them.</span></div>
+          {# Program + Year + Section -> shown to the instructor as "BSCPE 4A" #}
+          <div class="row g-2">
+            <div class="col-5 mb-3">
+              <label class="form-label" for="program">Course</label>
+              <select id="program" name="program" {{ 'disabled' if current_user.academic_locked }}
+                      class="form-select{% if profile_errors.get('program') %} is-invalid{% endif %}">
+                <option value="">—</option>
+                {% for course in courses %}<option value="{{ course.code }}"
+                  {{ 'selected' if (form.get('program') or '')|upper == course.code }}>{{ course.code }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-4 mb-3">
+              <label class="form-label" for="year_level">Year</label>
+              <select id="year_level" name="year_level" {{ 'disabled' if current_user.academic_locked }} class="form-select{% if profile_errors.get('year_level') %} is-invalid{% endif %}">
+                <option value="">—</option>
+                {% for y in range(1, 6) %}<option value="{{ y }}" {{ 'selected' if form.get('year_level')|string == y|string }}>{{ ['1st','2nd','3rd','4th','5th'][y-1] }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-3 mb-3">
+              <label class="form-label" for="section_letter">Section</label>
+              <select id="section_letter" name="section_letter" {{ 'disabled' if current_user.academic_locked }}
+                      class="form-select{% if profile_errors.get('section_letter') %} is-invalid{% endif %}">
+                <option value="">—</option>
+                {% for letter in 'ABCDEFG' %}<option value="{{ letter }}" {{ 'selected' if form.get('section_letter') == letter }}>{{ letter }}</option>{% endfor %}
+                {% if current_user.section_letter and current_user.section_letter not in 'ABCDEFG' %}<option selected value="{{ current_user.section_letter }}">{{ current_user.section_letter }}</option>{% endif %}
+              </select>
+            </div>
+          </div>
+          <p class="small text-muted">{% if current_user.academic_locked %}Your course, year, and section are locked. Ask the admin for corrections.
+            {% else %}Choose carefully. Your course, year, and section will be locked after you save them.{% endif %}</p>
+          {% for key in ('program', 'year_level', 'section_letter') %}
+            {% if profile_errors.get(key) %}<div class="small text-danger mb-2">{{ profile_errors[key] }}</div>{% endif %}
+          {% endfor %}
+        {% else %}
+          <div class="row g-2">
+            <div class="col-sm-3">{{ field("title", "Title", form, profile_errors, placeholder="Engr., Prof.") }}</div>
+            <div class="col-sm-5">{{ field("first_name", "First name", form, profile_errors, required=true) }}</div>
+            <div class="col-sm-4">{{ field("middle_name", "Middle name", form, profile_errors) }}</div>
+            <div class="col-sm-8">{{ field("last_name", "Last name", form, profile_errors, required=true) }}</div>
+            <div class="col-sm-4">{{ field("suffix", "Suffix", form, profile_errors) }}</div>
+          </div>
+          {# picked from a list (accounts.DEPARTMENTS); an older typed-in value stays selectable #}
+          {% set dept = form.get('department') or '' %}
+          <div class="mb-3">
+            <label class="form-label" for="department">Department</label>
+            <select id="department" name="department" class="form-select{% if profile_errors.get('department') %} is-invalid{% endif %}">
+              <option value="">— Choose your college —</option>
+              {% for d in departments %}<option value="{{ d }}" {{ 'selected' if d == dept }}>{{ d }}</option>{% endfor %}
+              {% if dept and dept not in departments %}<option value="{{ dept }}" selected>{{ dept }}</option>{% endif %}
+            </select>
+            {% if profile_errors.get('department') %}<div class="invalid-feedback">{{ profile_errors.department }}</div>
+            {% else %}<div class="form-text">Printed on the attendance report header.</div>{% endif %}
+          </div>
+        {% endif %}
+        <div class="row g-2">
+          <div class="col-sm-6">{{ field("contact_number", "Mobile number", form, profile_errors, placeholder="09XXXXXXXXX") }}</div>
+          <div class="col-sm-6">{{ field("email", "Email", form, profile_errors, type="email") }}</div>
+        </div>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-check2"></i> Save profile</button>
+      </form>
+      </details>
+    </div></div>
+
+    <!-- password -->
+    <div class="card"><div class="card-body">
+      <details class="fold" open data-fold {% if password_errors %}data-fold-open{% endif %}>
+      <summary class="card-title-sm"><i class="bi bi-shield-lock"></i> Change password</summary>
+      <form method="post" action="{{ url_for('account.password') }}" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ field("current_password", "Current password", {}, password_errors, type="password", autocomplete="current-password") }}
+        <div class="row g-2">
+          <div class="col-sm-6">{{ field("new_password", "New password", {}, password_errors, type="password", help="At least 8 characters", autocomplete="new-password") }}</div>
+          <div class="col-sm-6">{{ field("confirm_new_password", "Confirm new password", {}, password_errors, type="password", autocomplete="new-password") }}</div>
+        </div>
+        <button class="btn btn-outline-primary">Change password</button>
+      </form>
+      </details>
+    </div></div>
+  </div>
+</div>
+
+<div class="modal fade" id="profile-photo-modal" tabindex="-1" aria-labelledby="profile-photo-title" aria-hidden="true"
+     {% if photo_error %}data-open-on-load{% endif %}>
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5 fw-bold" id="profile-photo-title">Edit profile picture</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="profile-photo-preview mb-3" data-photo-preview>{{ avatar(current_user, 'avatar-photo', profile_photo_revision) }}</div>
+        <form id="profile-photo-form" method="post" action="{{ url_for('account.photo_upload') }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="profile-crop-editor mb-3" data-photo-crop hidden>
+            <div class="profile-crop-stage" data-crop-stage tabindex="0" role="group" aria-label="Position profile picture"
+                 aria-describedby="profile-crop-help">
+              <img data-crop-image alt="Picture being cropped" draggable="false">
+              <span class="profile-crop-mask" aria-hidden="true"></span>
+            </div>
+            <p class="form-text text-center mb-2" id="profile-crop-help">Drag to move, or use arrow keys. Pinch or zoom to adjust.</p>
+            <div class="profile-crop-controls">
+              <label for="profile-crop-zoom">Zoom</label>
+              <input id="profile-crop-zoom" data-crop-zoom class="form-range" type="range" min="1" max="4" step="0.01" value="1">
+              <output for="profile-crop-zoom" data-crop-zoom-value>1×</output>
+              <button type="button" class="btn btn-sm btn-light" data-crop-reset>Reset</button>
+            </div>
+            <input type="hidden" name="crop_x" disabled>
+            <input type="hidden" name="crop_y" disabled>
+            <input type="hidden" name="crop_size" disabled>
+          </div>
+          <label class="form-label" for="profile-photo">Profile picture</label>
+          <input id="profile-photo" class="form-control{% if photo_error %} is-invalid{% endif %}" name="photo" type="file"
+                 accept="image/jpeg,image/png,image/webp" required aria-describedby="profile-photo-help{% if photo_error %} profile-photo-error{% endif %}">
+          {% if photo_error %}<div id="profile-photo-error" class="invalid-feedback" role="alert">{{ photo_error }}</div>{% endif %}
+          <div class="form-text text-danger" data-photo-status role="alert"></div>
+          <div class="form-text" id="profile-photo-help">JPG, PNG or WEBP · up to 2 MB and 12 megapixels. Choose a picture, then adjust the crop before saving.</div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="submit" form="profile-photo-form" class="btn btn-primary" data-photo-save disabled>Save picture</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if profile_photo_revision %}
+<div class="modal fade" id="profile-picture-modal" tabindex="-1" aria-labelledby="profile-picture-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header profile-picture-header">
+        <h2 class="modal-title h5 fw-bold" id="profile-picture-title">Profile picture</h2>
+        <div class="profile-picture-actions ms-auto">
+        <div class="dropdown">
+          <button type="button" class="btn btn-sm btn-light profile-picture-action" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Picture options">
+            <i class="bi bi-three-dots" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="{{ url_for('account.photo_image', download=1, v=profile_photo_revision) }}" download="profile-picture.jpg">
+              <i class="bi bi-download me-2" aria-hidden="true"></i>Download</a></li>
+            <li><form method="post" action="{{ url_for('account.photo_remove') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item text-danger"><i class="bi bi-trash me-2" aria-hidden="true"></i>Remove picture</button>
+            </form></li>
+          </ul>
+        </div>
+        <button type="button" class="btn btn-sm btn-light profile-picture-action" data-bs-dismiss="modal" aria-label="Close">
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        </div>
+      </div>
+      <div class="modal-body text-center">
+        <img class="profile-picture-full" src="{{ url_for('account.photo_image', v=profile_photo_revision) }}" alt="Your current profile picture">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#profile-photo-modal">Change picture</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if codes is not none %}
+<!-- generate new backup codes: confirm with the password (like Discord) -->
+<div class="modal fade" id="codes-modal" tabindex="-1" aria-labelledby="codes-title" aria-hidden="true"
+     {% if codes_error %}data-open-on-load{% endif %}>
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('account.new_backup_codes') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="codes-title"><i class="bi bi-key text-primary"></i> Generate new backup codes</h2>
+          <div class="small text-muted">You'll get 10 new codes as a PDF.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% if codes.total %}
+        <div class="alert alert-warning small py-2"><i class="bi bi-exclamation-triangle-fill"></i>
+          <span>Your old codes will stop working, including any you already printed.</span></div>
+        {% endif %}
+        {{ field("password", "Enter your password to continue", {}, {'password': codes_error} if codes_error else {},
+                 type="password", required=true, autocomplete="current-password") }}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-arrow-repeat"></i> Generate</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if is_student and not masked_card %}
+<!-- RFID card registration pop-up -->
+<div class="modal fade" id="card-modal" tabindex="-1" aria-labelledby="card-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="card-title"><i class="bi bi-credit-card-2-front text-primary"></i> Register school ID</h2>
+          <div class="small text-muted">Register once, then just tap your card to check in.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">{% include "student/_card_register.html" %}</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# delete my own account (students and instructors) #}
+{% if current_user.role in ('student', 'instructor') %}
+{% set del_err = profile_errors.get('delete_password') or profile_errors.get('delete_confirm') %}
+<div class="modal fade" id="delete-account-modal" tabindex="-1" aria-labelledby="delete-account-title" aria-hidden="true"
+     {% if del_err %}data-open-on-load{% endif %}>
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('account.delete_me') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <h2 class="modal-title h5 fw-bold" id="delete-account-title"><i class="bi bi-trash text-danger"></i> Delete my account</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted">This logs you out and removes your account
+          ({{ current_user.student_number if current_user.role == 'student' else current_user.username }}).
+          Only the admin can bring it back.</p>
+        <div class="mb-3">
+          <label class="form-label" for="delete-password">Your password</label>
+          <input type="password" id="delete-password" name="password" required autocomplete="current-password"
+                 class="form-control{% if profile_errors.get('delete_password') %} is-invalid{% endif %}">
+          {% if profile_errors.get('delete_password') %}<div class="invalid-feedback">{{ profile_errors.delete_password }}</div>{% endif %}
+        </div>
+        <div class="form-check">
+          <input class="form-check-input{% if profile_errors.get('delete_confirm') %} is-invalid{% endif %}" type="checkbox" id="delete-confirm" name="confirm" value="1">
+          <label class="form-check-label small" for="delete-confirm">Yes, delete my account.</label>
+          {% if profile_errors.get('delete_confirm') %}<div class="invalid-feedback">{{ profile_errors.delete_confirm }}</div>{% endif %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger btn-icon"><i class="bi bi-trash"></i> Delete my account</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/profile_photo.js') }}"></script>
+<script>
+  // wrong password -> reopen the pop-up with the error
+  document.querySelectorAll(".modal[data-open-on-load]").forEach((m) => bootstrap.Modal.getOrCreateInstance(m).show());
+  const cm = document.getElementById("codes-modal");
+  cm && cm.addEventListener("shown.bs.modal", () => cm.querySelector("input[type=password]").focus());
+</script>
+{% if current_user.role == 'student' and not current_user.rfid_uid %}
+<script>
+  window.CARD_URLS = {
+    status: "{{ url_for('student.card_status') }}",
+    action: "{{ url_for('student.card_action', action='ACTION') }}",
+  };
+</script>
+<script src="{{ url_for('static', filename='js/card_registration.js') }}"></script>
+<script>
+  (function () {
+    const m = document.getElementById("card-modal");
+    if (!m) return;
+    // opened from the dashboard / old link (?card=1), or a registration already in progress
+    if (new URLSearchParams(location.search).has("card")) bootstrap.Modal.getOrCreateInstance(m).show();
+    // card saved -> reload so My account shows the registered card
+    m.querySelector("[data-card-done]").addEventListener("click", () => location.replace(location.pathname));
+    m.addEventListener("hidden.bs.modal", () => {
+      if (!m.querySelector('[data-panel="done"]').classList.contains("d-none")) location.replace(location.pathname);
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

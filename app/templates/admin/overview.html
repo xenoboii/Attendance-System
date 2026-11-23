@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block body_class %}page-admin-overview{% endblock %}
+{% block content %}
+{% set c = counts %}
+<div class="page-header">
+  <div><h1>Overview</h1><div class="sub">{{ now.strftime('%A, %B %d, %Y').replace(' 0', ' ') }} · the whole system at a glance.</div></div>
+</div>
+
+{% if storage.known and storage.low %}
+<div class="alert alert-warning d-flex gap-2" role="alert"><i class="bi bi-hdd"></i>
+  <div><b>Storage is running low:</b> only {{ storage.free }} ({{ storage.free_percent }}%) is free.
+    Old check-in signatures are removed by themselves after {{ signature_days }} days (you can shorten that below); consider a bigger SD card.</div></div>
+{% endif %}
+
+<div class="summary-tiles mb-3">
+  {% for icon, cls, value, label, url in [
+      ('people', 'ok', c.students, 'Students', url_for('admin.students')),
+      ('person-workspace', 'info', c.instructors, 'Instructors', url_for('admin.backup_codes')),
+      ('journal-bookmark', '', c.subjects, 'Active subjects', None),
+      ('collection', 'info', c.sections, 'Sections', None),
+      ('calendar-event', 'warn', c.sessions_today, 'Classes today', None),
+      ('check2-circle', 'ok', c.checkins_today, 'Check-ins today', None)] %}
+    {% if url %}<a class="card stat h-100 card-lift text-reset" href="{{ url }}">{% else %}<div class="card stat h-100">{% endif %}
+      <div class="stat-icon {{ cls }}"><i class="bi bi-{{ icon }}"></i></div>
+      <div class="min-w-0"><div class="value">{{ value }}</div><div class="label">{{ label }}</div></div>
+    {% if url %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+</div>
+
+<div class="cq cq-2 admin-overview-grid" style="align-items: stretch">
+  <div class="d-flex flex-column gap-3 admin-overview-col">
+    <div class="card"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-hdd"></i> Storage</div>
+      {% if storage.known %}
+        <div class="d-flex justify-content-between small mb-1"><span>{{ storage.used }} used of {{ storage.total }}</span>
+          <b class="{{ 'text-danger' if storage.low else 'text-success' }}">{{ storage.free }} free</b></div>
+        <div class="storage-bar {{ 'low' if storage.low }}" role="img" aria-label="{{ storage.used_percent }}% of storage used"><span style="width: {{ storage.used_percent }}%"></span></div>
+        <div class="setting-row mt-3"><div class="me-auto">Attendance database</div><span class="font-monospace">{{ storage.database }}</span></div>
+        <div class="setting-row"><div class="me-auto">Signatures</div><span class="font-monospace">{{ storage.signatures }}</span></div>
+      {% else %}<div class="small text-muted">Storage can't be read on this device.</div>{% endif %}
+      {# how long a signature drawn at web check-in is kept (the stored registration signature is never deleted) #}
+      <form method="post" action="{{ url_for('admin.signature_days') }}" class="setting-row align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="me-auto">
+          <label class="fw-semibold" for="signature-days">Keep check-in signatures for</label>
+          <div class="small text-muted">Signatures drawn at web check-in are deleted after this many days to save space.
+            Attendance records stay; the sheet then shows the student's stored signature.</div>
+        </div>
+        <div class="input-group input-group-sm" style="width: 9.5rem">
+          <input type="number" id="signature-days" name="days" class="form-control" required
+                 min="{{ signature_days_range[0] }}" max="{{ signature_days_range[1] }}" value="{{ signature_days }}">
+          <span class="input-group-text">days</span>
+        </div>
+        <button class="btn btn-sm btn-primary">Save</button>
+      </form>
+    </div></div>
+
+    <div class="card"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-cpu"></i> Attendance device</div>
+      <div class="setting-row"><div class="me-auto">Battery</div>
+        {% if battery %}<span class="chip {{ 'chip-ok' if battery.level == 'ok' else ('chip-warn' if battery.level == 'low' else 'chip-bad') }}">
+          <i class="bi bi-{{ battery.icon }}"></i> {{ battery.percent }}%{% if battery.charging %} · charging{% endif %}</span>
+        {% else %}<span class="chip chip-muted">No battery monitor</span>{% endif %}</div>
+      <div class="setting-row"><div class="me-auto">Device time<div class="small text-muted">Instructors' phones correct it automatically.</div></div>
+        <span class="font-monospace">{{ now.strftime('%b %d, %I:%M %p') }}</span></div>
+      <div class="setting-row"><div class="me-auto">Card taps today</div><span class="font-monospace">{{ c.card_checkins_today }}</span></div>
+    </div></div>
+  </div>
+
+  <div class="d-flex flex-column gap-3 admin-overview-col">
+    <div class="card"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-clipboard-check"></i> Needs attention</div>
+      {% if backup.overdue %}
+        <div class="setting-row"><div class="me-auto"><b>{{ 'No backup yet' if not backup.last else 'Last backup ' ~ backup.days ~ ' days ago' }}</b>
+            <span class="text-muted">· download one so a dead SD card doesn't lose the records</span></div>
+          <a class="btn btn-sm btn-light" href="{{ url_for('admin.backup_page') }}">Open</a></div>
+      {% endif %}
+      {% for item in attention %}
+        {% set n = item.people|length %}
+        <div class="setting-row"><div class="me-auto"><b>{{ n }}</b> {{ item.who }}{{ '' if n == 1 else 's' }} {{ item.text }}</div>
+          <button type="button" class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#attention-{{ item.key }}">Open</button></div>
+      {% else %}
+        {% if not backup.overdue %}<div class="small text-muted"><i class="bi bi-check2-circle text-success"></i> Nothing needs attention.</div>{% endif %}
+      {% endfor %}
+      <div class="small text-muted mt-2">{{ c.archived }} archived subject{{ '' if c.archived == 1 else 's' }} · {{ c.admins }} admin account{{ '' if c.admins == 1 else 's' }}</div>
+    </div></div>
+
+    <div class="card"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-clock-history"></i> Recent activity</div>
+      {% for a in activity %}
+        <div class="setting-row"><div class="me-auto min-w-0">
+            <div class="text-truncate">{{ a.action|replace('_', ' ')|capitalize }} <span class="text-muted">· {{ a.entity|replace('_', ' ') }}</span></div>
+            <div class="small text-muted">{% if a.first_name %}{{ a.first_name }} {{ a.last_name }} ({{ a.role }}){% else %}System{% endif %}</div></div>
+          <span class="small text-muted text-nowrap">{{ a.created_at[:10]|nicedate }} {{ a.created_at[11:16]|time12 }}</span></div>
+      {% else %}
+        <div class="small text-muted">No activity recorded yet.</div>
+      {% endfor %}
+    </div></div>
+  </div>
+</div>
+{# who each "Needs attention" line is about #}
+{% for item in attention %}
+<div class="modal fade" id="attention-{{ item.key }}" tabindex="-1" aria-labelledby="attention-title-{{ item.key }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="attention-title-{{ item.key }}"><i class="bi bi-{{ item.icon }} text-primary"></i>
+            {{ item.who|capitalize }}s {{ item.text.split(' (')[0] }}</h2>
+          <div class="small text-muted">{{ item.people|length }} account{{ '' if item.people|length == 1 else 's' }}</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% for p in item.people %}
+        <div class="d-flex align-items-center gap-2 py-2 {{ 'border-top' if not loop.first }}">
+          <div class="me-auto min-w-0"><div class="fw-semibold text-truncate">{{ p.last_name }}, {{ p.first_name }}</div>
+            <div class="small text-muted font-monospace">{{ p.student_number if p.role == 'student' else p.username }}</div></div>
+          {% if p.role == 'student' %}<a class="btn btn-sm btn-light" href="{{ url_for('admin.student', student_id=p.id) }}">Open</a>{% endif %}
+        </div>
+        {% endfor %}
+        {% if item.key == 'department' %}<div class="small text-muted mt-2">Each instructor picks it in <b>My account → Department</b>.</div>
+        {% elif item.key == 'card' %}<div class="small text-muted mt-2">Students register their card in <b>My account</b>, at the device.</div>
+        {% else %}<div class="small text-muted mt-2">Students are asked to draw it the next time they log in.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

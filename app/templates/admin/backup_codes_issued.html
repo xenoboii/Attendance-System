@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Backup code{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('admin.backup_codes') }}">Backup codes</a><i class="bi bi-chevron-right small"></i>{{ user.last_name }}, {{ user.first_name }}</div>
+<div class="backup-wrap">
+  <div class="card"><div class="card-body p-4">
+    <div class="d-flex align-items-start gap-3 mb-3">
+      <div class="stat-icon warn"><i class="bi bi-key-fill"></i></div>
+      <div>
+        <h1 class="h4 fw-bold mb-1">Backup code for {{ user.first_name }} {{ user.last_name }}</h1>
+        <div class="text-muted small">{{ 'Student' if user.role == 'student' else 'Instructor' }} ·
+          <span class="font-monospace">{{ user.student_number if user.role == 'student' else user.username }}</span>.
+          It works once and won't be shown again after you press Done.</div>
+      </div>
+    </div>
+
+    <div class="issued-code">
+      <span class="font-monospace" id="issued-code">{{ code }}</span>
+      <button type="button" class="btn btn-light btn-icon" data-copy="{{ code }}"><i class="bi bi-clipboard"></i> Copy</button>
+    </div>
+
+    <ol class="small text-muted ps-3 mb-4">
+      <li>Give this code to {{ user.first_name }} in person.</li>
+      <li>On the {{ 'student' if user.role == 'student' else 'instructor' }} login page they click <b>Forgot password?</b> and enter
+        their {{ 'student number' if user.role == 'student' else 'username' }}, this code and a new password.</li>
+      <li>After logging in: <b>My account → Backup codes → Generate new codes</b> to get their own set of 10.</li>
+    </ol>
+
+    <form method="post" action="{{ url_for('admin.backup_codes_issued_done') }}" class="d-flex"
+          data-confirm="Have you given the code to {{ user.first_name }}? It can't be shown again."
+          data-confirm-title="Finish" data-confirm-ok="Yes, done">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary btn-icon ms-auto"><i class="bi bi-check2"></i> Done</button>
+    </form>
+  </div></div>
+</div>
+{% endblock %}

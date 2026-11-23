@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% include "_head.html" %}
+  <title>{% block title %}{% endblock %} · Attendance</title>
+</head>
+<body class="{{ 'site-prof' if is_prof_site else 'site-student' }}">
+  {# light / dark switch for the login pages (logged in, it's in Settings) #}
+  <button type="button" class="btn theme-toggle" id="theme-toggle" aria-label="Switch to dark mode" title="Switch theme">
+    <i class="bi bi-moon-stars-fill theme-icon-dark"></i>
+    <i class="bi bi-sun-fill theme-icon-light"></i>
+  </button>
+  {# one centered card on every sign-in page (login, register, forgot password, backup codes, signature) #}
+  <main class="auth-wrap">
+    <div class="auth-brand">
+      <span class="brand-mark"><i class="bi bi-person-check-fill"></i></span>
+      <span>Attendance System
+        <small>{{ 'Run class attendance in seconds' if is_prof_site else 'Check in with one tap' }}</small></span>
+    </div>
+
+    <section class="auth-panel">
+      <div class="auth-box {% block box_class %}{% endblock %}">
+        {% include "_flash.html" %}
+        {% block content %}{% endblock %}
+      </div>
+    </section>
+
+    <p class="auth-foot"><i class="bi bi-wifi"></i> No internet needed</p>
+  </main>
+  <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script>
+    // Sun / moon button: flips light <-> dark and remembers it on this device (_head.html)
+    (function () {
+      const btn = document.getElementById("theme-toggle");
+      const root = document.documentElement;
+      const label = () => btn.setAttribute("aria-label",
+        root.getAttribute("data-bs-theme") === "dark" ? "Switch to light mode" : "Switch to dark mode");
+      btn.addEventListener("click", () => {
+        const next = root.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+        window.applyAppearance(next, root.getAttribute("data-text-size"));
+        label();
+      });
+      label();
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

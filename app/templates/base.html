@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% include "_head.html" %}
+  <title>{% block title %}Attendance System{% endblock %} · Attendance</title>
+</head>
+<body class="{{ 'site-prof' if is_prof_site else 'site-student' }} {% block body_class %}{% endblock %}">
+{% if current_user %}
+  {% set is_student = current_user.role == 'student' %}
+  {% set is_admin = current_user.role == 'admin' %}
+  {% set is_instructor = current_user.role == 'instructor' %}
+  {% set ep = request.endpoint or '' %}
+  {% macro nav(endpoint, icon, label, active, pill=None) %}
+    <li><a href="{{ url_for(endpoint) }}" class="{{ 'active' if active }}">
+      <i class="bi bi-{{ icon }}"></i><span>{{ label }}</span>{% if pill %}<span class="pill">{{ pill }}</span>{% endif %}</a></li>
+  {% endmacro %}
+
+  <aside class="app-sidebar" id="sidebar">
+    <a class="brand" href="{{ url_for('main.index') }}">
+      <span class="brand-mark"><i class="bi bi-person-check-fill"></i></span>
+      <span>Attendance<small>{{ 'Admin portal' if is_admin else ('Instructor portal' if not is_student else 'Student portal') }}</small></span>
+    </a>
+
+    <div class="side-label">Menu</div>
+    <ul class="side-nav">
+      {% if is_student %}
+        {{ nav('student.dashboard', 'grid-1x2', 'Dashboard', ep == 'student.dashboard') }}
+        {{ nav('student.my_classes', 'journal-bookmark', 'My classes', ep in ('student.my_classes', 'student.class_page')) }}
+      {% elif is_admin %}
+        {{ nav('admin.dashboard', 'speedometer2', 'Overview', ep == 'admin.dashboard') }}
+        {{ nav('admin.courses_page', 'mortarboard', 'Courses', ep in ('admin.courses_page', 'admin.add_course', 'admin.course_status')) }}
+        {{ nav('admin.departments_page', 'building', 'Departments', ep in ('admin.departments_page', 'admin.add_department', 'admin.department_status')) }}
+        {{ nav('admin.students', 'people', 'Student support', ep == 'admin.students' or ep == 'admin.student') }}
+        {{ nav('admin.accounts_page', 'person-gear', 'Accounts', ep.startswith('admin.account')) }}
+        {{ nav('admin.backup_codes', 'key', 'Backup codes', ep.startswith('admin.backup_codes')) }}
+        {{ nav('admin.backup_page', 'database-down', 'Backup & restore', ep in ('admin.backup_page', 'admin.backup_restore', 'admin.backup_download')) }}
+        {{ nav('admin.device_page', 'router', 'Device settings', ep.startswith('admin.device')) }}
+      {% else %}
+        {{ nav('instructor.dashboard', 'journal-bookmark', 'My subjects', ep.startswith('instructor.') and not ep.startswith('instructor.trash') and ep != 'instructor.archive_page') }}
+      {% endif %}
+      {# RFID card registration lives in My account; remind students who haven't registered one #}
+      {{ nav('account.index', 'person-circle', 'My account', ep.startswith('account.') or ep == 'auth.signature',
+             pill='ID' if is_student and not current_user.rfid_uid else None) }}
+      {% if is_instructor %}
+        {{ nav('instructor.archive_page', 'archive', 'Archive', ep == 'instructor.archive_page') }}
+        {{ nav('instructor.trash_page', 'trash3', 'Recently deleted', ep == 'instructor.trash_page') }}
+      {% endif %}
+      {{ nav('settings.index', 'gear', 'Settings', ep.startswith('settings.')) }}
+    </ul>
+
+    {% if is_instructor %}
+    {# device battery (18650 UPS board); hidden when there is no battery monitor. app.js refreshes it. #}
+    {% set b = device_battery %}
+    <a class="side-battery battery-{{ b.level if b else 'none' }}" href="{{ url_for('settings.index') }}" data-battery
+       data-battery-url="{{ url_for('instructor.device_status') }}" {% if not b %}hidden{% endif %}
+       title="Attendance device battery">
+      <i class="bi bi-{{ b.icon if b else 'battery' }}" data-battery-icon></i>
+      <span>Device battery</span>
+      <b data-battery-text>{{ b.percent ~ '%' if b else '' }}</b>
+    </a>
+    {% endif %}
+
+    <div class="side-user">
+      {% from '_macros.html' import avatar %}
+      {{ avatar(current_user, 'avatar-sm', profile_photo_revision) }}
+      <div class="flex-grow-1 overflow-hidden">
+        <div class="name text-truncate">{{ current_user.first_name }} {{ current_user.last_name }}</div>
+        <div class="role">{{ current_user.student_number if is_student else current_user.role|capitalize }}</div>
+      </div>
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm" title="Log out" aria-label="Log out"><i class="bi bi-box-arrow-right"></i></button>
+      </form>
+    </div>
+  </aside>
+
+  <div class="app-main">
+    <header class="app-topbar">
+      <button class="btn btn-light btn-sm" type="button" aria-label="Menu"
+              onclick="document.getElementById('sidebar').classList.toggle('show'); event.stopPropagation();">
+        <i class="bi bi-list fs-5"></i></button>
+      <span class="brand-mark" style="width:30px;height:30px;font-size:.9rem"><i class="bi bi-person-check-fill"></i></span>
+      <strong>Attendance</strong>
+      <div class="app-topbar-actions">
+        {% if is_instructor %}{% set b = device_battery %}
+        <a class="top-battery battery-{{ b.level if b else 'none' }}" href="{{ url_for('settings.index') }}" data-battery
+           {% if not b %}hidden{% endif %} title="Attendance device battery">
+          <i class="bi bi-{{ b.icon if b else 'battery' }}" data-battery-icon></i><b data-battery-text>{{ b.percent ~ '%' if b else '' }}</b></a>
+        {% endif %}
+        <a href="{{ url_for('account.index') }}" aria-label="My account">
+          {{ avatar(current_user, 'avatar-sm', profile_photo_revision) }}</a>
+      </div>
+    </header>
+
+    <main class="app-content">
+      {% include "_flash.html" %}
+      {% if is_instructor %}
+      {# shown by app.js only when the device's clock is off (RTC backup) #}
+      <div class="alert alert-warning clock-warning d-none" data-clock-warning
+           data-clock-url="{{ url_for('instructor.clock_status') }}" role="alert">
+        <i class="bi bi-clock-history"></i>
+        <div class="me-auto"><b>The device's clock is wrong</b> (<span data-clock-diff></span>).
+          Present / late depend on it.</div>
+        <button type="button" class="btn btn-sm btn-warning" data-clock-sync>
+          <i class="bi bi-phone"></i> Sync time from this phone</button>
+      </div>
+      {# low battery and not charging: plug it in before it shuts itself down at 5% #}
+      {% set b = device_battery %}
+      <div class="alert alert-warning clock-warning" data-battery-warning role="alert"
+           {% if not (b and b.level != 'ok' and not b.charging) %}hidden{% endif %}>
+        <i class="bi bi-battery"></i>
+        <div class="me-auto"><b>Device battery is low</b> (<span data-battery-warn-text>{{ b.percent ~ '%' if b else '' }}</span>).
+          Plug in the USB-C adapter. It shuts down safely at 5%.</div>
+      </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+{% else %}
+  <main class="container py-5">
+    {% include "_flash.html" %}
+    {% block guest_content %}{% endblock %}
+  </main>
+{% endif %}
+
+  <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

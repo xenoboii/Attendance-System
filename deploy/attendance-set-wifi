@@ -1,0 +1,17 @@
+#!/bin/sh
+# Changes the device's hotspot (attendance-ap) name and password - and nothing else.
+# Installed as /usr/local/sbin/attendance-set-wifi by deploy/device-settings.sh; the website may
+# run ONLY this (through sudo) when the admin changes the Wi-Fi in Device settings.
+#   usage: attendance-set-wifi <name> <password>
+set -eu
+NAME="${1:-}"
+PASS="${2:-}"
+[ "${#NAME}" -ge 1 ] && [ "${#NAME}" -le 32 ] || { echo "the Wi-Fi name must be 1-32 characters" >&2; exit 2; }
+[ "${#PASS}" -ge 8 ] && [ "${#PASS}" -le 63 ] || { echo "the password must be 8-63 characters" >&2; exit 2; }
+nmcli connection show attendance-ap >/dev/null 2>&1 || { echo "the hotspot (attendance-ap) isn't set up - run deploy/hotspot.sh" >&2; exit 3; }
+
+nmcli connection modify attendance-ap 802-11-wireless.ssid "$NAME" wifi-sec.psk "$PASS"
+# Switch over a few seconds later, so the web page that asked can still answer first
+# (the switch disconnects every phone, including the admin's).
+setsid sh -c 'sleep 4; nmcli connection up attendance-ap' </dev/null >/dev/null 2>&1 &
+echo "ok"

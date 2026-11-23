@@ -1,0 +1,29 @@
+<div class="modal fade" id="vacation-modal" tabindex="-1" aria-labelledby="vacation-title" aria-hidden="true"
+     {% if errors.get('vacation') or errors.get('vacation_start') or errors.get('vacation_end') or errors.get('vacation_reason') %}data-open-on-load{% endif %}>
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('instructor.vacation_add', section_id=section.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <h2 class="modal-title h5 fw-bold" id="vacation-title"><i class="bi bi-calendar-range"></i> Vacation</h2>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted">Both dates are included. Classes in this range are skipped without counting absences.</p>
+        {% if errors.get('vacation') %}<div class="alert alert-warning small">{{ errors.vacation }}</div>{% endif %}
+        <div class="row g-2">
+          <div class="col-6">{{ field('vacation_start', 'Start date', form, errors, type='date', required=true) }}</div>
+          <div class="col-6">{{ field('vacation_end', 'End date', form, errors, type='date', required=true) }}</div>
+        </div>
+        {{ field('vacation_reason', 'Reason (optional)', form, errors, placeholder='Vacation') }}
+        {% if other_sections %}<div class="form-check">
+          <input class="form-check-input" id="vacation-all-sections" name="all_sections" value="1" type="checkbox" {{ 'checked' if form.get('all_sections') }}>
+          <label class="form-check-label" for="vacation-all-sections">Apply to all my sections ({{ other_sections + 1 }})</label>
+        </div>{% endif %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary">Add vacation</button>
+      </div>
+    </form>
+  </div>
+</div>

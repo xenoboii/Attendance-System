@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dev Test Page</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #f4f5f7; color: #222; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    .muted { color: #666; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+    .card { background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow-x: auto; }
+    .full { grid-column: 1 / -1; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { text-align: left; padding: 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+    button { cursor: pointer; padding: 4px 8px; margin: 2px 0; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    input[type=text] { padding: 5px; }
+    .flash { background: #fff8d6; border: 1px solid #ecd36a; padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; font-size: 14px; }
+    .lcd { display: inline-block; background: #1f3d8a; color: #dfe9ff; font-family: Consolas, monospace;
+           font-size: 18px; line-height: 1.35; padding: 12px 14px; border-radius: 6px; border: 6px solid #222;
+           white-space: pre; }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
+    .present { background: #2e9d4f; } .late { background: #e08a00; }
+    .disabled, .closed { background: #888; } .done { background: #3867d6; }
+    .chips button { font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Dev Test Page <span class="muted">(fake RFID + LCD, no hardware needed)</span></h1>
+  <p class="muted">Now: {{ now.strftime('%a %b %d %Y %I:%M:%S %p') }} ·
+    <label><input type="checkbox" id="auto" checked> auto-refresh every 3s</label> ·
+    <a href="{{ url_for('main.health') }}">/health</a></p>
+
+  {% for msg in get_flashed_messages() %}<div class="flash">{{ msg }}</div>{% endfor %}
+
+  <div class="grid">
+    <div class="card">
+      <h2>LCD (4x20)</h2>
+      <div class="lcd" id="lcd-preview" data-status-url="{{ url_for('dev.lcd_status') }}">{% for line in lcd %}{{ line }}
+{% endfor %}</div>
+    </div>
+
+    <div class="card">
+      <h2>Tap a card (fake RFID)</h2>
+      <form method="post" action="{{ url_for('dev.tap') }}">
+        <input type="text" name="uid" placeholder="Card UID e.g. CARD0001" autocomplete="off">
+        <button>Tap</button>
+      </form>
+      <p class="muted">Quick taps:</p>
+      <div class="chips">
+        {% for row in students if row.s.rfid_uid %}
+          <form method="post" action="{{ url_for('dev.tap') }}" style="display:inline">
+            <input type="hidden" name="uid" value="{{ row.s.rfid_uid }}">
+            <button title="{{ row.s.first_name }} {{ row.s.last_name }}">{{ row.s.rfid_uid }}</button>
+          </form>
+        {% endfor %}
+        <form method="post" action="{{ url_for('dev.tap') }}" style="display:inline">
+          <input type="hidden" name="uid" value="NEWCARD{{ now.strftime('%H%M%S') }}">
+          <button>new unknown card</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Battery (fake UPS board reading)</h2>
+      <p class="muted">Now: {% if battery %}<b>{{ battery.percent }}%</b>{% if battery.charging %}, charging{% endif %} ({{ battery.level }}){% else %}no reading (badge hidden){% endif %}</p>
+      <form method="post" action="{{ url_for('dev.battery_set') }}">
+        <input type="number" name="percent" min="0" max="100" value="{{ battery.percent if battery else 82 }}" style="width:70px"> %
+        <label><input type="checkbox" name="charging" value="1" {{ 'checked' if battery and battery.charging }}> charging</label>
+        <button>Set</button>
+        <button name="clear" value="1">No battery monitor</button>
+      </form>
+      <p class="muted">Quick:
+        {% for p, c in [(95, 0), (45, 0), (15, 0), (8, 0), (60, 1)] %}
+          <form method="post" action="{{ url_for('dev.battery_set') }}" style="display:inline">
+            <input type="hidden" name="percent" value="{{ p }}">{% if c %}<input type="hidden" name="charging" value="1">{% endif %}
+            <button>{{ p }}%{{ ' +' if c }}</button></form>
+        {% endfor %}
+        · a reading lasts 3 minutes, like the real one (the Pi refreshes it every 30 s)</p>
+    </div>
+
+    <div class="card full">
+      <h2>Class sessions</h2>
+      <table>
+        <tr><th>ID</th><th>Class</th><th>Date / time</th><th>Mode</th><th>State now</th><th>Change</th></tr>
+        {% for item in sessions %}{% set cs = item.cs %}
+        <tr>
+          <td>{{ cs.id }}</td>
+          <td>{{ cs.subject_code }} {{ cs.section_name }}<br><span class="muted">{{ cs.type }} {{ cs.title or '' }}</span></td>
+          <td>{{ cs.session_date }} {{ cs.start_time or '' }}
+            {% if item.window %}<br><span class="muted">opens {{ item.window.opens_at.strftime('%H:%M') }},
+              late {{ item.window.late_at.strftime('%H:%M') }}, closes {{ item.window.closes_at.strftime('%H:%M') }}</span>{% endif %}</td>
+          <td>{{ cs.checkin_mode }}{% if cs.checkin_mode == 'manual' %} ({{ cs.manual_state }}){% endif %}</td>
+          <td><span class="badge {{ item.state }}">{{ item.state }}</span></td>
+          <td>
+            <form method="post" action="{{ url_for('dev.session_mode', session_id=cs.id) }}">
+              {% if cs.start_time %}<button name="choice" value="auto">Auto</button>{% endif %}
+              <button name="choice" value="present">Enable (Present)</button>
+              <button name="choice" value="late">Enable (Late)</button>
+              <button name="choice" value="disabled">Disable</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="card full">
+      <h2>Students</h2>
+      <table>
+        <tr><th>Student</th><th>Card</th><th>Web check-in button</th><th>Card registration</th></tr>
+        {% for row in students %}{% set s = row.s %}{% set b = row.button %}{% set r = row.reg %}
+        <tr>
+          <td>{{ s.last_name }}, {{ s.first_name }}<br><span class="muted">{{ s.student_number }} · id {{ s.id }}</span></td>
+          <td>{{ s.rfid_uid or '—' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('dev.web_checkin', student_id=s.id) }}">
+              <button {% if not b.enabled %}disabled{% endif %}>{{ b.label }}</button>
+              <span class="badge {{ b.variant }}">{{ b.variant }}</span>
+            </form>
+            <span class="muted">{{ b.message }}</span>
+          </td>
+          <td>
+            {% if r %}<span class="muted">{{ r.status }}{% if r.detected_uid %} · {{ r.detected_uid }}{% endif %}
+              {% if r.status in ('waiting', 'detected') %} · {{ r.seconds_left }}s left{% endif %}</span><br>{% endif %}
+            {% for action in ['start', 'confirm', 'retry', 'cancel'] %}
+              <form method="post" action="{{ url_for('dev.card', student_id=s.id, action=action) }}" style="display:inline">
+                <button>{{ action }}</button>
+              </form>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Last 10 RFID taps</h2>
+      <table>
+        <tr><th>Time</th><th>UID</th><th>Who</th><th>Result</th></tr>
+        {% for r in scans %}
+        <tr><td>{{ r.scanned_at[11:] }}</td><td>{{ r.rfid_uid }}</td>
+            <td>{{ (r.first_name ~ ' ' ~ r.last_name) if r.first_name else '—' }}</td><td>{{ r.result }}</td></tr>
+        {% else %}<tr><td colspan="4" class="muted">No taps yet</td></tr>{% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Attendance records</h2>
+      <table>
+        <tr><th>Time</th><th>Student</th><th>Status</th><th>Method</th></tr>
+        {% for a in records %}
+        <tr><td>{{ a.checked_in_at[11:] }}</td><td>{{ a.first_name }} {{ a.last_name }}<br><span class="muted">{{ a.type }}</span></td>
+            <td><span class="badge {{ a.status }}">{{ a.status }}</span></td><td>{{ a.method }}</td></tr>
+        {% else %}<tr><td colspan="4" class="muted">No records yet</td></tr>{% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <script id="lcd-preview-data" type="application/json">{{ lcd_preview|tojson }}</script>
+  <script src="{{ url_for('static', filename='js/dev_lcd.js') }}"></script>
+  <script>
+    // Refresh to update countdowns / states, but not while you're typing
+    setInterval(() => {
+      const typing = document.activeElement && document.activeElement.tagName === "INPUT"
+                     && document.activeElement.type === "text";
+      if (document.getElementById("auto").checked && !typing) location.href = location.pathname;
+    }, 3000);
+  </script>
+</body>
+</html>

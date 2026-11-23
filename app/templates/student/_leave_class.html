@@ -1,0 +1,6 @@
+<form method="post" action="{{ url_for('student.leave_class', section_id=c.section_id) }}"
+      data-confirm="Leave {{ c.code }} {{ c.section_name }}? Your attendance records will be kept. Joining again follows the instructor's approval settings."
+      data-confirm-title="Leave class?" data-confirm-ok="Leave class" data-confirm-icon="door-open">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-sm btn-outline-danger btn-icon"><i class="bi bi-box-arrow-right"></i> Leave class</button>
+</form>

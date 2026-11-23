@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% from "_macros.html" import section_name_fields %}
+{% block title %}{{ subject.code }}{% endblock %}
+{% block body_class %}page-instructor-subject{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>{{ subject.code }}</div>
+<div class="page-header">
+  <div>
+    <h1>{{ subject.title }}</h1>
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-2"><span class="subject-code">{{ subject.code }}</span>
+      <span class="chip chip-muted">{{ subject.school_year }} · {{ subject.semester }} sem</span>
+      {% if subject.units %}<span class="chip chip-muted">{{ '%g' % subject.units }} units</span>{% endif %}</div>
+    {% if subject.description %}<div class="sub">{{ subject.description }}</div>{% endif %}
+  </div>
+  <div class="actions">
+    {% if subject.ended_at %}
+    <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#copy-term-{{ subject.id }}">
+      <i class="bi bi-arrow-repeat"></i> Copy to new term</button>
+    <form method="post" action="{{ url_for('instructor.subject_reopen', subject_id=subject.id) }}"
+          data-confirm="Reopen {{ subject.code }}? Its weekly schedule will start creating classes again."
+          data-confirm-title="Reopen subject" data-confirm-ok="Reopen">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-light btn-icon"><i class="bi bi-arrow-counterclockwise"></i> Reopen</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('instructor.subject_end', subject_id=subject.id) }}"
+          data-confirm="End the semester for {{ subject.code }}? All its sections stop scheduling classes and it moves to Archive. Attendance records and reports are kept, and you can reopen it."
+          data-confirm-title="End semester" data-confirm-ok="End semester" data-confirm-icon="flag">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-light btn-icon"><i class="bi bi-flag"></i> End semester</button>
+    </form>
+    <a class="btn btn-light btn-icon" href="{{ url_for('instructor.subject_edit', subject_id=subject.id) }}"><i class="bi bi-pencil"></i> Edit</a>
+    {% endif %}
+    <form method="post" action="{{ url_for('instructor.subject_delete', subject_id=subject.id) }}"
+          data-confirm="Delete {{ subject.code }} and all its sections? It goes to Recently deleted, where you can restore it within 30 days.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-light btn-icon text-danger"><i class="bi bi-trash"></i> Delete</button>
+    </form>
+  </div>
+</div>
+
+{% if subject.ended_at %}
+<div class="alert alert-secondary d-flex flex-wrap align-items-center gap-2 mb-3" role="status">
+  <i class="bi bi-archive"></i>
+  <div class="me-auto"><b>Archived.</b> The semester was ended on {{ subject.ended_at[:10]|nicedate }}. No classes are scheduled and nothing can be changed; reports and exports still work.</div>
+  
+</div>
+{% endif %}
+{% set cs = subject %}{% set nt = next_term %}{% include "instructor/_copy_term.html" %}
+{# title on the left, the main action on the right - same as the section tabs #}
+<div class="tabs-bar">
+  <div class="card-title-sm mb-0"><i class="bi bi-collection"></i> Sections
+    <span class="chip chip-brand ms-1">{{ sections|length }}</span></div>
+  <div class="tabs-actions">
+    <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#add-section-modal">
+      <i class="bi bi-plus-lg"></i> Add section</button>
+  </div>
+</div>
+
+{% if sections %}
+  {# full-width table, same template as the Students / Schedule tabs; the whole row opens the section #}
+  <div class="card table-card">
+    <div class="table-responsive">
+      <table class="table table-modern table-clickable">
+        <thead><tr><th>Section</th><th>Students</th><th>Weekly schedule</th><th>Sessions</th><th>Join code</th><th></th></tr></thead>
+        <tbody>
+          {% for s in sections %}
+            {% set href = url_for('instructor.section', section_id=s.id) %}
+            <tr data-href="{{ href }}">
+              <td><a class="fw-semibold text-reset text-nowrap" href="{{ href }}">{{ s.name }}</a></td>
+              <td class="text-nowrap"><i class="bi bi-people text-muted"></i> {{ s.student_count }}</td>
+              <td class="small">
+                {% for sc in s.schedule %}
+                  {# one class day per line - the row simply grows when there are more #}
+                  <div class="sched-line"><span class="day">{{ sc.day_name[:3] }}</span>
+                    <span class="text-nowrap">{{ sc.start_time|time12 }} – {{ sc.end_time|time12 }}</span>
+                    {% if sc.room %}<span class="text-muted text-nowrap"><i class="bi bi-geo-alt"></i> {{ sc.room }}</span>{% endif %}</div>
+                {% else %}<span class="text-muted">No schedule yet</span>{% endfor %}
+              </td>
+              <td class="text-nowrap small">{{ s.session_count }}</td>
+              <td><span class="chip chip-muted font-monospace">{{ s.join_code }}</span></td>
+              <td class="text-end"><a class="btn btn-sm btn-light btn-icon" href="{{ href }}">Open <i class="bi bi-chevron-right"></i></a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="card"><div class="empty"><i class="bi bi-collection"></i><h3>No sections yet</h3>
+    <p class="mb-3">Add a section such as BSIT 3A to start enrolling students.</p>
+    <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#add-section-modal">
+      <i class="bi bi-plus-lg"></i> Add section</button></div></div>
+{% endif %}
+
+<!-- Add section: floating card -->
+<div class="modal fade" id="add-section-modal" tabindex="-1" aria-labelledby="add-section-title" aria-hidden="true"
+     {% if errors %}data-open-on-load{% endif %}>
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('instructor.section_create', subject_id=subject.id) }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="add-section-title"><i class="bi bi-collection text-primary"></i> Add section</h2>
+          <div class="small text-muted">{{ subject.code }} · {{ subject.title }}</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {{ section_name_fields(form or {}, errors, "new", courses) }}
+        <p class="small text-muted mt-3 mb-0">Matching students can join directly by default. In section Settings, you can require approval for every student.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-plus-lg"></i> Add section</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // reopen the pop-up if the name was rejected; focus the name field when it opens
+  const m = document.getElementById("add-section-modal");
+  m.addEventListener("shown.bs.modal", () => document.getElementById("new-course").focus());
+  if (m.hasAttribute("data-open-on-load")) bootstrap.Modal.getOrCreateInstance(m).show();
+</script>
+{% endblock %}

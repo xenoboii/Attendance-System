@@ -1,0 +1,75 @@
+{% set f = form if form else section %}
+<div class="card mb-3 section-settings-card"><div class="card-body">
+  <form method="post" action="{{ url_for('instructor.section_edit', section_id=section.id) }}" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="section-settings-grid">
+      <div>
+        <div class="card-title-sm"><i class="bi bi-pencil-square"></i> Section</div>
+        {{ section_name_fields(form if form else name_parts, errors, 'edit', courses) }}
+      </div>
+      <div>
+        <label class="form-label" for="join-approval">Approval to join</label>
+        {% set approval = f.get('join_approval', section.join_approval) %}
+        <select id="join-approval" name="join_approval" class="form-select{% if errors.get('join_approval') %} is-invalid{% endif %}">
+          <option value="outsiders" data-hint="Matching students join directly; others need approval." {{ 'selected' if approval == 'outsiders' }}>Students with different course, year, or section</option>
+          <option value="everyone" data-hint="All students need your approval, including matching students." {{ 'selected' if approval == 'everyone' }}>Every student</option>
+          <option value="anyone" data-hint="Any course, year, or section can join directly with the code." {{ 'selected' if approval == 'anyone' }}>Anyone with the code</option>
+        </select>
+        {% if errors.get('join_approval') %}<div class="invalid-feedback">{{ errors.join_approval }}</div>{% endif %}
+        <div class="form-text" data-approval-hint>{{ {'outsiders': 'Matching students join directly; others need approval.', 'everyone': 'All students need your approval, including matching students.', 'anyone': 'Any course, year, or section can join directly with the code.'}.get(approval, '') }}</div>
+      </div>
+      <div>
+        <label class="form-label" for="default-checkin-mode">Default check-in mode</label>
+        <select id="default-checkin-mode" name="default_checkin_mode" class="form-select{% if errors.get('default_checkin_mode') %} is-invalid{% endif %}">
+          <option value="auto" {{ 'selected' if f.get('default_checkin_mode') == 'auto' }}>Automatic</option>
+          <option value="manual" {{ 'selected' if f.get('default_checkin_mode') == 'manual' }}>Manual</option>
+        </select>
+        {% if errors.get('default_checkin_mode') %}<div class="invalid-feedback">{{ errors.default_checkin_mode }}</div>{% endif %}
+        <div class="form-text">Applies to sessions created from the weekly schedule.</div>
+      </div>
+      <div>
+        <div class="row g-2">
+          <div class="col-4">{{ field('default_open_before_minutes', 'Opens before', f, errors, type='number') }}</div>
+          <div class="col-4">{{ field('default_grace_minutes', 'Grace period', f, errors, type='number') }}</div>
+          <div class="col-4">{{ field('default_close_after_minutes', 'Closes after', f, errors, type='number') }}</div>
+        </div>
+        <div class="form-text">Minutes relative to the class start time.</div>
+      </div>
+      <div>
+        <label class="form-label" for="drop-absences">Drop rule: absences</label>
+        <input type="number" id="drop-absences" name="drop_absences" min="0" max="30" inputmode="numeric"
+               class="form-control{% if errors.get('drop_absences') %} is-invalid{% endif %}"
+               value="{{ f.get('drop_absences') if f.get('drop_absences') is not none else section.drop_absences }}">
+        {% if errors.get('drop_absences') %}<div class="invalid-feedback">{{ errors.drop_absences }}</div>{% endif %}
+        <div class="form-text">A student with this many absences is flagged <b>For dropping</b> in the Students tab (you decide whether to drop them). 0 = no rule.</div>
+      </div>
+    </div>
+    <div class="small text-muted my-2"><i class="bi bi-clock-history"></i> <span id="window-example"></span></div>
+    <div class="text-end section-settings-actions"><button class="btn btn-primary btn-icon"><i class="bi bi-check2"></i> Save settings</button></div>
+  </form>
+</div></div>
+{% if not section.ended_at %}
+<div class="card mb-3 section-danger"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+  <div class="me-auto">
+    <div class="card-title-sm mb-1"><i class="bi bi-flag"></i> End of semester</div>
+    <div class="small text-muted">Ends {{ section.subject_code }} for all its sections: the weekly schedule stops creating classes and the subject moves to Archive. Records and reports are kept.</div>
+  </div>
+  <form method="post" action="{{ url_for('instructor.subject_end', subject_id=section.subject_id) }}"
+          data-confirm="End the semester for {{ section.subject_code }}? All its sections stop scheduling classes and it moves to Archive. Attendance records and reports are kept, and you can reopen it."
+          data-confirm-title="End semester" data-confirm-ok="End semester" data-confirm-icon="flag">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-outline-secondary btn-icon"><i class="bi bi-flag"></i> End semester</button>
+    </form>
+</div></div>
+{% endif %}
+<div class="card border-danger-subtle section-danger"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+  <div class="me-auto">
+    <div class="card-title-sm text-danger mb-1"><i class="bi bi-exclamation-octagon text-danger"></i> Danger zone</div>
+    <div class="small text-muted">Deleted sections can be restored within 30 days.</div>
+  </div>
+  <form method="post" action="{{ url_for('instructor.section_delete', section_id=section.id) }}"
+        data-confirm="Delete section {{ section.name }}? You can restore it from Recently deleted within 30 days.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm btn-outline-danger btn-icon"><i class="bi bi-trash"></i> Delete this section</button>
+  </form>
+</div></div>

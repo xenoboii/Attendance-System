@@ -1,0 +1,93 @@
+{# Session controls. Re-fetched every 3 s so the buttons always match the real state.
+   Live buttons:   Open (Present) / Switch to Late / End session / Reopen
+   The mode dropdown lives in the page header and cannot undo "End session". #}
+{% set phase = info.phase %}
+{% set ended = s.ended_at or phase == 'ended' %}
+{% if s.type == 'async' %}
+{# Async: no check-in. Unmarked students received Present when the activity was assigned. #}
+<div class="card mb-3"><div class="card-body">
+  <div class="card-title-sm"><i class="bi bi-house-door"></i> Async activity</div>
+  <div class="d-flex align-items-start gap-2 mb-2">
+    <span class="stat-icon ok"><i class="bi bi-people-fill"></i></span>
+    <div><div class="fw-semibold">Automatic attendance</div>
+      <div class="small text-muted">Students without an attendance record were marked <b>Present</b>
+        on {{ (s.ended_at or s.created_at)[:10]|nicedate }}.</div></div>
+  </div>
+  <p class="small text-muted mb-0">Use the <b>P · L · A · E</b> buttons to change anyone — for example <b>A</b> if they didn't submit,
+    or <b>E</b> for excused. Students who join the section later aren't included; mark them by hand.</p>
+</div></div>
+{% else %}
+<div class="card mb-3"><div class="card-body">
+  <div class="card-title-sm"><i class="bi bi-toggles"></i> Check-in control</div>
+
+  {% if ended %}
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <span class="stat-icon" style="background:var(--line-soft);color:var(--muted)"><i class="bi bi-flag-fill"></i></span>
+      <div><div class="fw-semibold">Session ended</div>
+        <div class="small text-muted">
+          {% if s.ended_at %}Ended by you at {{ s.ended_at[11:16]|time12 }}.
+          {% elif info.window and s.session_date == now.strftime('%Y-%m-%d') %}Closed automatically at {{ info.window.closes_at.strftime('%I:%M %p').lstrip('0') }}.
+          {% else %}This class date has passed.{% endif %}
+          Students without a record are absent.</div></div>
+    </div>
+    <form method="post" action="{{ url_for('instructor.session_state', session_id=s.id) }}"
+          data-confirm="Reopen check-in for this session? Students will be marked PRESENT until you switch to Late.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button name="choice" value="present" class="btn btn-light w-100 btn-icon justify-content-center">
+        <i class="bi bi-arrow-counterclockwise"></i> Reopen check-in</button>
+    </form>
+
+  {% else %}
+    <form method="post" action="{{ url_for('instructor.session_state', session_id=s.id) }}" class="d-grid gap-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if phase == 'checkout' %}
+        {% set checked_in = rows|selectattr('record_status', 'in', ['present', 'late'])|list %}
+        {% set checked_out = checked_in|selectattr('checked_out_at')|list %}
+        <div class="alert alert-info py-2 mb-1 justify-content-center"><span class="dot pulse"></span>
+          <span>Check-out open · <b>{{ checked_out|length }} of {{ checked_in|length }}</b> out</span></div>
+        <button name="choice" value="present" class="btn btn-light btn-icon justify-content-center">
+          <i class="bi bi-arrow-left-circle"></i> Back to check-in</button>
+      {% elif phase == 'present' %}
+        <div class="alert alert-success py-2 mb-1 justify-content-center"><span class="dot pulse"></span><span>Open · <b>Present</b></span></div>
+        <button name="choice" value="late" class="btn btn-warning btn-icon justify-content-center">
+          <i class="bi bi-alarm"></i> Switch to Late</button>
+      {% elif phase == 'late' %}
+        <div class="alert alert-warning py-2 mb-1 justify-content-center"><span class="dot pulse"></span><span>Open · <b>Late</b></span></div>
+        <button name="choice" value="present" class="btn btn-light btn-icon justify-content-center">
+          <i class="bi bi-arrow-left-circle"></i> Back to Present</button>
+      {% else %}
+        <div class="alert alert-info py-2 mb-1 justify-content-center text-center"><i class="bi bi-hourglass"></i>
+          <span>{% if s.checkin_mode == 'auto' and info.window %}Opens automatically at {{ info.window.opens_at.strftime('%I:%M %p').lstrip('0') }}{% else %}Check-in is not open{% endif %}</span></div>
+        <button name="choice" value="present" class="btn btn-primary btn-icon justify-content-center">
+          <i class="bi bi-play-fill"></i> Open now · Present</button>
+        <button name="choice" value="late" class="btn btn-light btn-icon justify-content-center">
+          <i class="bi bi-alarm"></i> Open now · Late</button>
+      {% endif %}
+    </form>
+    {# check-out: required or not is the dropdown next to the check-in mode (_session_mode.html);
+       when required, "Open check-out" near the end of class #}
+    {% if phase != 'checkout' %}
+    {% if s.require_checkout %}
+    <form method="post" action="{{ url_for('instructor.session_checkout', session_id=s.id) }}" class="mt-2"
+          data-confirm="Open check-out now? Check-in closes; students tap their card or press Check out before leaving. Anyone who checked in but doesn't check out becomes ABSENT when you end the session."
+          data-confirm-ok="Open check-out" data-confirm-icon="box-arrow-right">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button name="open" value="1" class="btn btn-info w-100 btn-icon justify-content-center">
+        <i class="bi bi-box-arrow-right"></i> Open check-out</button>    </form>
+    {% endif %}
+    {% endif %}
+    <form method="post" action="{{ url_for('instructor.session_end', session_id=s.id) }}" class="mt-2"
+          data-confirm="{{ 'End this session? Students who didn\'t check in, or didn\'t check out, become absent.' if phase == 'checkout' else 'End this session? Check-in closes and students who didn\'t check in become absent.' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-danger w-100 btn-icon justify-content-center"><i class="bi bi-stop-circle"></i> End session</button>
+    </form>
+    {% if can_set_async %}
+      <hr class="my-3">
+      <button type="button" class="btn btn-light w-100 btn-icon justify-content-center"
+              data-bs-toggle="modal" data-bs-target="#async-day-modal">
+        <i class="bi bi-house-door"></i> Async activity…</button>
+    {% endif %}
+  {% endif %}
+</div></div>
+
+{% endif %}

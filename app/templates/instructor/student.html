@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}{{ st.last_name }}, {{ st.first_name }}{% endblock %}
+{% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
+  <a href="{{ url_for('instructor.subject', subject_id=section.subject_id) }}">{{ section.subject_code }}</a><i class="bi bi-chevron-right small"></i>
+  <a href="{{ url_for('instructor.section', section_id=section.id, tab='students') }}">{{ section.name }}</a><i class="bi bi-chevron-right small"></i>
+  {{ st.last_name }}, {{ st.first_name }}
+</div>
+<div class="page-header">
+  <div>
+    <h1>{{ st.last_name }}, {{ st.first_name }}{% if st.middle_name %} {{ st.middle_name }}{% endif %}{% if st.suffix %} {{ st.suffix }}{% endif %}</h1>
+    <div class="meta mt-1">
+      <span><i class="bi bi-person-vcard"></i><span class="font-monospace">{{ st.student_number }}</span></span>
+      {% set cs = st|course_section %}{% if cs %}<span><i class="bi bi-mortarboard"></i>{{ cs }}</span>{% endif %}
+      <span><i class="bi bi-calendar-check"></i>In {{ section.name }} since {{ st.enrolled_at[:10]|nicedate(true) }}</span>
+    </div>
+  </div>
+  <div class="small text-muted">Contact the admin for student information, signature, or school ID corrections.</div>
+</div>
+
+<!-- attendance summary for this section (no per-date list) -->
+<div class="card-title-sm"><i class="bi bi-bar-chart"></i> Attendance summary · {{ section.subject_code }} {{ section.name }}
+</div>
+<div class="summary-tiles mb-3">
+      <div class="card stat h-100">
+        {% set rate = summary.rate %}
+        {% set ring = 'var(--ok)' if rate is none or rate >= 90 else ('var(--warn)' if rate >= 80 else 'var(--bad)') %}
+        <div class="rate-ring" style="--p: {{ rate or 0 }}; --c: {{ ring }}; width:56px;height:56px"><span style="width:44px;height:44px;font-size:.85rem">{{ rate ~ '%' if rate is not none else '—' }}</span></div>
+        <div><div class="label">Attendance rate</div><div class="small text-muted">{{ summary.held }} held</div></div>
+      </div>
+      {% for key, cls, icon, label in [('present', 'ok', 'check2-circle', 'Present'), ('late', 'warn', 'alarm', 'Late'),
+                                       ('absent', 'bad', 'person-x', 'Absent'), ('excused', 'info', 'envelope-paper', 'Excused')] %}
+        <div class="card stat h-100"><div class="stat-icon {{ cls }}"><i class="bi bi-{{ icon }}"></i></div>
+          <div><div class="value {{ 'text-danger' if key == 'absent' and summary.absent }}">{{ summary[key] }}</div><div class="label">{{ label }}</div></div></div>
+      {% endfor %}
+    </div>
+
+
+<div class="cq cq-2 mb-3" style="align-items: stretch">
+  <div>
+    <div class="card h-100"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-person-lines-fill"></i> Contact</div>
+      <div class="id-row">
+        <div class="stat-icon info"><i class="bi bi-phone"></i></div>
+        <div class="min-w-0"><div class="small text-muted">Mobile</div>
+          <div class="fw-semibold">{{ st.contact_number or '—' }}</div></div>
+      </div>
+      <div class="id-row">
+        <div class="stat-icon info"><i class="bi bi-envelope"></i></div>
+        <div class="min-w-0"><div class="small text-muted">Email</div>
+          <div class="fw-semibold text-truncate">{% if st.email %}<a href="mailto:{{ st.email }}">{{ st.email }}</a>{% else %}—{% endif %}</div></div>
+      </div>
+    </div></div>
+
+  </div>
+  <div>
+    <div class="card h-100"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-person-badge"></i> Attendance ID</div>
+      <div class="id-row">
+        <div class="stat-icon {{ 'ok' if st.rfid_uid else 'warn' }}"><i class="bi bi-credit-card-2-front"></i></div>
+        <div class="me-auto min-w-0">
+          <div class="fw-semibold">School ID</div>
+          <div class="small text-muted">{% if st.rfid_uid %}Registered · <span class="font-monospace">••••{{ st.rfid_uid[-4:] }}</span>{% else %}Not registered yet{% endif %}</div>
+        </div>
+
+      </div>
+      <div class="id-row align-items-start">
+        <div class="stat-icon {{ 'ok' if st.signature_path and not st.must_resign else 'warn' }}"><i class="bi bi-pen"></i></div>
+        <div class="flex-grow-1 min-w-0">
+          <div class="fw-semibold">Signature</div>
+          {% if st.signature_path %}
+            <img class="signature-preview my-2" alt="{{ st.first_name }}'s signature"
+                 src="{{ url_for('auth.signature_image', user_id=st.id) }}">
+          {% endif %}
+          <div class="small text-muted">
+            {% if st.must_resign %}Waiting for the student to sign again.
+            {% elif st.signature_path %}{% if st.signature_signed_at %}Signed {{ st.signature_signed_at[:10]|nicedate(true) }}.{% endif %}
+            {% else %}No signature yet.{% endif %}</div>
+
+        </div>
+      </div>
+    </div></div>
+
+  </div>
+</div>
+
+    {% if other_classes %}
+    <div class="card"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-journal-bookmark"></i> Also in your classes</div>
+      {% for c in other_classes %}
+        <a class="d-flex align-items-center gap-2 py-1 text-reset" href="{{ url_for('instructor.student_info', section_id=c.section_id, student_id=st.id) }}">
+          <span class="subject-code">{{ c.code }}</span><span>{{ c.section_name }}</span><i class="bi bi-chevron-right text-muted ms-auto"></i></a>
+      {% endfor %}
+    </div></div>
+    {% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelectorAll(".modal[data-open-on-load]").forEach((m) => bootstrap.Modal.getOrCreateInstance(m).show());
+</script>
+{% endblock %}

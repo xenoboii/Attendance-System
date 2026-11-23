@@ -1,0 +1,32 @@
+#!/bin/sh
+# Sets the Pi's clock (and the RTC module, if there is one) to the given time.
+# Installed as /usr/local/sbin/attendance-set-time by deploy/install.sh; the website may run
+# ONLY this (through sudo) when an instructor taps "Sync time from this phone".
+#   usage: attendance-set-time <seconds since 1970>
+set -eu
+case "${1:-}" in
+  ''|*[!0-9]*) echo "usage: attendance-set-time <unix seconds>" >&2; exit 2 ;;
+esac
+[ "$1" -ge 1735689600 ] && [ "$1" -le 4102444800 ] || { echo "time out of range" >&2; exit 2; }
+date -s "@$1" >/dev/null
+
+# Save into the RTC module too, so the time survives the next power cut. An RTC problem must not
+# undo the sync: the Pi's clock is already right, so only warn (the website logs it).
+if [ -e /dev/rtc0 ]; then
+  if command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null; then
+    echo "rtc: saved"
+  # hwclock missing (Raspberry Pi OS Lite) or failing: write the RTC directly (RTC_SET_TIME, UTC)
+  elif python3 - <<'EOF' 2>/dev/null
+import fcntl, struct, time
+t = time.gmtime()
+data = struct.pack("9i", t.tm_sec, t.tm_min, t.tm_hour, t.tm_mday, t.tm_mon - 1, t.tm_year - 1900, 0, 0, 0)
+with open("/dev/rtc0", "wb", buffering=0) as rtc:
+    fcntl.ioctl(rtc, 0x4024700A, data)        # RTC_SET_TIME
+EOF
+  then
+    echo "rtc: saved"
+  else
+    echo "rtc: NOT saved (the clock is set, but the RTC module didn't accept the time)" >&2
+  fi
+fi
+date

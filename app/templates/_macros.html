@@ -1,0 +1,87 @@
+{% macro avatar(user, size='', photo_revision=none) %}
+<span class="avatar {{ size }}">
+  {%- if photo_revision -%}
+    <img src="{{ url_for('account.photo_image', v=photo_revision) }}" alt="Your profile picture">
+  {%- else -%}
+    {{ user.first_name[0] }}{{ user.last_name[0] }}
+  {%- endif -%}
+</span>
+{% endmacro %}
+
+{# Form field with Bootstrap styling + error message under it #}
+{% macro field(name, label, form, errors, type="text", required=false, placeholder="", help="", autocomplete="") %}
+  <div class="mb-3">
+    <label class="form-label" for="{{ name }}">{{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}</label>
+    <input type="{{ type }}" id="{{ name }}" name="{{ name }}"
+           class="form-control{% if errors.get(name) %} is-invalid{% endif %}"
+           {% if type != "password" %}value="{{ form.get(name) if form.get(name) is not none else '' }}"{% endif %}
+           {% if required %}required{% endif %}
+           {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+           {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}>
+    {% if errors.get(name) %}<div class="invalid-feedback">{{ errors[name] }}</div>
+    {% elif help %}<div class="form-text">{{ help }}</div>{% endif %}
+  </div>
+{% endmacro %}
+
+{# Dropdown. options = list of values (shown as-is) #}
+{% macro select(name, label, form, errors, options, required=false) %}
+  <div class="mb-3">
+    <label class="form-label" for="{{ name }}">{{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}</label>
+    <select id="{{ name }}" name="{{ name }}" class="form-select{% if errors.get(name) %} is-invalid{% endif %}">
+      <option value="">Choose…</option>
+      {% for o in options %}<option value="{{ o }}" {{ 'selected' if form.get(name) == o }}>{{ o }}</option>{% endfor %}
+    </select>
+    {% if errors.get(name) %}<div class="invalid-feedback">{{ errors[name] }}</div>{% endif %}
+  </div>
+{% endmacro %}
+
+{# Section name in 3 parts: Course + Year + Section -> "BSCpE 4A" (live preview below).
+   form = dict with course / year_level / section_letter. p = id prefix (two forms on one page). #}
+{% macro section_name_fields(form, errors, p="sec", course_options=()) %}
+  <div class="row g-2 section-name-fields" data-section-name>
+    <div class="col-5">
+      <label class="form-label" for="{{ p }}-course">Course <span class="text-danger">*</span></label>
+      <select id="{{ p }}-course" name="course" class="form-select{% if errors.get('course') %} is-invalid{% endif %}" required>
+        <option value="">Choose…</option>
+        {% for course in course_options %}<option value="{{ course.code }}" {{ 'selected' if (form.get('course') or '')|upper == course.code }}>{{ course.code }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-4">
+      <label class="form-label" for="{{ p }}-year">Year <span class="text-danger">*</span></label>
+      <select id="{{ p }}-year" name="year_level" class="form-select{% if errors.get('year_level') %} is-invalid{% endif %}" required>
+        {# 1st is picked by default (no empty "Year" choice) #}
+        {% for y in (1, 2, 3, 4, 5) %}
+          <option value="{{ y }}" {{ 'selected' if form.get('year_level')|string == y|string }}>{{ ['1st','2nd','3rd','4th','5th'][y - 1] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-3">
+      <label class="form-label" for="{{ p }}-letter">Section <span class="text-danger">*</span></label>
+      <select id="{{ p }}-letter" name="section_letter" class="form-select{% if errors.get('section_letter') %} is-invalid{% endif %}" required>
+        <option value="">Choose…</option>
+        {% for letter in 'ABCDEFG' %}<option value="{{ letter }}" {{ 'selected' if form.get('section_letter') == letter }}>{{ letter }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  {% set err = errors.get('course') or errors.get('year_level') or errors.get('section_letter') %}
+  {% if err %}<div class="small text-danger mt-1">{{ err }}</div>{% endif %}
+  <div class="section-name-preview small mt-2">Section name: <b data-preview>—</b></div>
+{% endmacro %}
+
+{% macro name_fields(form, errors) %}
+  <div class="row g-2">
+    <div class="col-sm-6">{{ field("first_name", "First name", form, errors, required=true, autocomplete="given-name") }}</div>
+    <div class="col-sm-6">{{ field("middle_name", "Middle name", form, errors, autocomplete="additional-name") }}</div>
+    <div class="col-sm-8">{{ field("last_name", "Last name", form, errors, required=true, autocomplete="family-name") }}</div>
+    <div class="col-sm-4">{{ field("suffix", "Suffix", form, errors, placeholder="Jr., III") }}</div>
+  </div>
+{% endmacro %}
+
+{% macro password_fields(form, errors) %}
+  <div class="row g-2">
+    <div class="col-sm-6">{{ field("password", "Password", form, errors, type="password", required=true,
+                                   help="At least 8 characters", autocomplete="new-password") }}</div>
+    <div class="col-sm-6">{{ field("confirm_password", "Confirm password", form, errors, type="password",
+                                   required=true, autocomplete="new-password") }}</div>
+  </div>
+{% endmacro %}

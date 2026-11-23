@@ -1,0 +1,36 @@
+{# "Copy to new term" pop-up. Needs: cs (subject: id, code, title), nt (suggested next term), semesters #}
+<div class="modal fade" id="copy-term-{{ cs.id }}" tabindex="-1" aria-labelledby="copy-term-title-{{ cs.id }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('instructor.subject_copy', subject_id=cs.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="copy-term-title-{{ cs.id }}"><i class="bi bi-arrow-repeat text-primary"></i> Copy to new term</h2>
+          <div class="small text-muted">{{ cs.code }} · {{ cs.title }}</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted">Makes a new subject with the same sections and weekly schedule. No students are copied:
+          they join again with the new join codes.</p>
+        <div class="row g-2">
+          <div class="col-7">
+            <label class="form-label" for="copy-sy-{{ cs.id }}">School year</label>
+            <input id="copy-sy-{{ cs.id }}" name="school_year" class="form-control" required pattern="\d{4}-\d{4}"
+                   value="{{ nt.school_year }}" placeholder="2026-2027" autocomplete="off">
+          </div>
+          <div class="col-5">
+            <label class="form-label" for="copy-sem-{{ cs.id }}">Semester</label>
+            <select id="copy-sem-{{ cs.id }}" name="semester" class="form-select">
+              {% for sem in semesters %}<option value="{{ sem }}" {{ 'selected' if sem == nt.semester }}>{{ sem }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-check2"></i> Copy subject</button>
+      </div>
+    </form>
+  </div>
+</div>

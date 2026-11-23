@@ -1,0 +1,22 @@
+{% macro catalog_actions(label, active, status_url, remove_url, kind, name_field=none) %}
+<div class="dropdown">
+  <button type="button" class="btn btn-sm btn-light" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for {{ label }}">
+    <i class="bi bi-three-dots" aria-hidden="true"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><form method="post" action="{{ status_url }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if name_field %}<input type="hidden" name="{{ name_field }}" value="{{ label }}">{% endif %}
+      <input type="hidden" name="active" value="{{ '0' if active else '1' }}">
+      <button class="dropdown-item">{{ 'Disable' if active else 'Enable' }}</button>
+    </form></li>
+    <li><form method="post" action="{{ remove_url }}"
+              data-confirm="Remove {{ label }} from the {{ kind }} catalog? Existing profiles and classes will keep their saved labels."
+              data-confirm-title="Remove {{ kind }}" data-confirm-ok="Remove">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if name_field %}<input type="hidden" name="{{ name_field }}" value="{{ label }}">{% endif %}
+      <button class="dropdown-item text-danger"><i class="bi bi-trash me-2" aria-hidden="true"></i>Remove</button>
+    </form></li>
+  </ul>
+</div>
+{% endmacro %}

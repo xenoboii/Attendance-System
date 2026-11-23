@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Student support{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Student support</h1><div class="sub">Correct student information and help replace signatures or school IDs.</div></div></div>
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="d-flex gap-2">
+    <input class="form-control" name="q" value="{{ query }}" placeholder="Search by name or student number" aria-label="Search students">
+    <button class="btn btn-primary">Search</button>
+  </form>
+</div></div>
+<div class="card table-card"><div class="table-responsive"><table class="table table-modern">
+  <thead><tr><th>Student</th><th>Student number</th><th>Course / section</th><th></th></tr></thead>
+  <tbody>{% for st in students %}<tr>
+    <td>{{ st.last_name }}, {{ st.first_name }}</td><td class="font-monospace">{{ st.student_number }}</td><td>{{ st|course_section }}</td>
+    <td class="text-end"><a class="btn btn-sm btn-light" href="{{ url_for('admin.student', student_id=st.id) }}">Open</a></td>
+  </tr>{% else %}<tr><td colspan="4" class="text-muted">No students found.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

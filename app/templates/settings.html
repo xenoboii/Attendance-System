@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Settings</h1><div class="sub">Changes apply right away and are saved to your account.</div></div>
+</div>
+
+<form method="post" action="{{ url_for('settings.save') }}" data-settings-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card mb-3"><div class="card-body">
+    <div class="card-title-sm"><i class="bi bi-palette"></i> Appearance</div>
+
+    <div class="setting-row">
+      <div class="me-auto">
+        <label class="fw-semibold" for="theme">Theme</label>
+        <div class="small text-muted">System follows this device's light / dark setting.</div>
+      </div>
+      <select id="theme" name="theme" class="form-select setting-select">
+        {% for value, label in [('system', 'System'), ('light', 'Light'), ('dark', 'Dark')] %}
+          <option value="{{ value }}" {{ 'selected' if current_user.theme == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {# accent color: buttons, links and highlights. Colors match style.css html[data-accent=...] #}
+    {% set my_accent = current_user.accent if 'accent' in current_user.keys() else 'default' %}
+    <fieldset class="setting-row">
+      <div class="me-auto">
+        <legend class="fw-semibold fs-6 mb-0">Color</legend>
+        <div class="small text-muted">Background, cards, buttons and links. None = plain light / dark. <span class="fw-semibold" data-accent-name>{{ my_accent|capitalize }}</span></div>
+      </div>
+      <div class="swatches" role="radiogroup" aria-label="Color">
+        {% for value, label, hex in [('none', 'None', 'none'), ('default', 'Default', '#0f766e' if is_prof_site else '#4f46e5'),
+                                     ('blue', 'Blue', '#1d4ed8'), ('green', 'Green', '#15803d'), ('yellow', 'Yellow', '#ca8a04'),
+                                     ('orange', 'Orange', '#c2410c'), ('red', 'Red', '#b91c1c'), ('pink', 'Pink', '#db2777'),
+                                     ('purple', 'Purple', '#7e22ce'), ('maroon', 'Maroon', '#831843'), ('gray', 'Gray', '#475569')] %}
+          <label class="swatch{{ ' swatch-none' if value == 'none' }}" title="{{ label }}"{% if value != 'none' %} style="--swatch: {{ hex }}"{% endif %}>
+            <input type="radio" name="accent" value="{{ value }}" class="visually-hidden" aria-label="{{ label }}"
+                   {{ 'checked' if my_accent == value }}>
+            <span aria-hidden="true">{% if value == 'default' %}<i class="bi bi-stars"></i>{% elif value == 'none' %}<i class="bi bi-slash-circle"></i>{% endif %}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="setting-row">
+      <div class="me-auto">
+        <label class="fw-semibold" for="text_size">Text size</label>
+        <div class="small text-muted">Large makes everything easier to read on small screens.</div>
+      </div>
+      <select id="text_size" name="text_size" class="form-select setting-select">
+        {% for value, label in [('normal', 'Normal'), ('large', 'Large')] %}
+          <option value="{{ value }}" {{ 'selected' if current_user.text_size == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div></div>
+
+  {% if current_user.role == 'instructor' %}
+  <div class="card mb-3"><div class="card-body">
+    <div class="card-title-sm"><i class="bi bi-file-earmark-pdf"></i> Attendance reports</div>
+    <div class="setting-row">
+      <div class="me-auto">
+        <label class="fw-semibold" for="report_sign_default">Instructor signature on reports</label>
+        <div class="small text-muted">
+          {% if current_user.signature_path %}Default for the "Prof./Instructor's Signature" row. You can still change it each time you download.
+          {% else %}Save a signature in <a href="{{ url_for('account.index') }}">My account</a> first.{% endif %}</div>
+      </div>
+      <select id="report_sign_default" name="report_sign_default" class="form-select setting-select"
+              {{ 'disabled' if not current_user.signature_path }}>
+        <option value="0" {{ 'selected' if not current_user.report_sign_default }}>Leave blank</option>
+        <option value="1" {{ 'selected' if current_user.report_sign_default }}>Put my signature</option>
+      </select>
+    </div>
+  </div></div>
+  {% endif %}
+
+  {% if current_user.role == 'instructor' %}
+  <div class="card mb-3" data-clock-card data-clock-url="{{ url_for('instructor.clock_status') }}"><div class="card-body">
+    <div class="card-title-sm"><i class="bi bi-cpu"></i> Attendance device</div>
+    {% set b = device_battery %}
+    <div class="setting-row" data-battery-row>
+      <div class="me-auto">
+        <div class="fw-semibold">Battery</div>
+        <div class="small text-muted" data-battery-detail>
+          {% if not b %}No battery reading. On the device, set BATTERY_BACKEND for your UPS board.
+          {% elif b.charging %}Charging from USB-C.
+          {% elif b.level == 'critical' %}Almost empty. Plug in now; it shuts down safely at 5%.
+          {% elif b.level == 'low' %}Low. Plug in the USB-C adapter soon.
+          {% else %}Running on battery.{% endif %}
+          {% if b and b.voltage %}<span class="font-monospace">({{ '%.2f'|format(b.voltage) }} V)</span>{% endif %}</div>
+      </div>
+      <span class="font-monospace fw-semibold battery-{{ b.level if b else 'none' }}" data-battery-pct>
+        <i class="bi bi-{{ b.icon if b else 'battery' }}"></i> {{ b.percent ~ '%' if b else '—' }}</span>
+    </div>
+    <div class="setting-row">
+      <div class="me-auto">
+        <div class="fw-semibold">Device clock</div>
+        <div class="small text-muted">Present / late / absent are decided with this time.</div>
+      </div>
+      <span class="font-monospace fw-semibold" data-clock-device>—</span>
+    </div>
+    <div class="setting-row">
+      <div class="me-auto">
+        <div class="fw-semibold">This phone</div>
+        <div class="small" data-clock-state>Checking…</div>
+      </div>
+      <span class="font-monospace" data-clock-phone>—</span>
+    </div>
+    <div class="pt-2">
+      <button type="button" class="btn btn-outline-primary btn-icon" data-clock-sync>
+        <i class="bi bi-phone"></i> Sync time from this phone</button>
+      <div class="small text-muted mt-2">The device corrects its clock by itself from an instructor's phone when it
+        is more than a minute off, except while a class is taking check-ins. Use this button for that case.
+        Make sure this phone shows the right time first.</div>
+    </div>
+  </div></div>
+  {% endif %}
+
+  <noscript><button class="btn btn-primary">Save settings</button></noscript>
+  <div class="small text-muted" data-saved-note style="visibility:hidden"><i class="bi bi-check2"></i> Saved</div>
+</form>
+
+{# its own form (the settings above save by themselves): full backup, download only #}
+{% if current_user.role == 'instructor' and backup %}
+<div class="card mt-3" id="backup"><div class="card-body">
+  <div class="card-title-sm"><i class="bi bi-database-down"></i> Backup of my subjects</div>
+  <div class="setting-row">
+    <div class="me-auto">
+      <div class="fw-semibold">Download my subjects</div>
+      <div class="small text-muted">One .zip with only <b>your</b> subjects, sections, schedules and attendance, your students'
+        signatures. Other instructors' subjects are never included.
+        Keep it somewhere other than the device.</div>
+    </div>
+    {% if backup.last %}<span class="chip {{ 'chip-warn' if backup.overdue else 'chip-ok' }} text-nowrap">Last: {{ backup.last[:10]|nicedate }}</span>
+    {% else %}<span class="chip chip-warn text-nowrap">Never backed up</span>{% endif %}
+  </div>
+  {% if backup.overdue %}<div class="small text-warning-emphasis"><i class="bi bi-exclamation-triangle"></i>
+    {{ "You haven't downloaded a backup yet." if not backup.last else 'Your last backup is ' ~ backup.days ~ ' days old.' }}
+    One every {{ remind_days }} days is a good habit.</div>{% endif %}
+  <form method="post" action="{{ url_for('settings.backup_download') }}" class="d-flex flex-wrap align-items-end gap-2 pt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="form-label small mb-1" for="backup-password">Your password</label>
+      <input type="password" id="backup-password" name="password" class="form-control" required autocomplete="current-password" style="min-width: 220px">
+    </div>
+    <button class="btn btn-primary btn-icon"><i class="bi bi-download"></i> Download backup</button>
+  </form>
+  <div class="small text-muted mt-2"><i class="bi bi-shield-lock"></i> It holds your students' records, so keep it private.</div>
+
+  <hr class="my-3">
+  <div class="fw-semibold">Import my subjects</div>
+  <div class="small text-muted">For a device that was rebuilt (new SD card, fresh install): bring back your subjects, sections,
+    schedules and attendance from your backup file. It only adds what is missing; nothing here is replaced. Students who
+    register with the same student number get their classes and history back without joining again.</div>
+  <form method="post" action="{{ url_for('settings.backup_import') }}" enctype="multipart/form-data"
+        class="d-flex flex-wrap align-items-end gap-2 pt-3"
+        data-confirm="Import the subjects in this backup file into your account?"
+        data-confirm-title="Import my subjects" data-confirm-ok="Import">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="flex-grow-1" style="min-width: 220px">
+      <label class="form-label small mb-1" for="import-file">Backup file (.zip)</label>
+      <input type="file" id="import-file" name="file" accept=".zip,application/zip" required class="form-control">
+    </div>
+    <div>
+      <label class="form-label small mb-1" for="import-password">Your password</label>
+      <input type="password" id="import-password" name="password" class="form-control" required autocomplete="current-password">
+    </div>
+    <button class="btn btn-outline-primary btn-icon"><i class="bi bi-upload"></i> Import</button>
+  </form>
+</div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  // battery row follows the minute-by-minute refresh in app.js
+  document.addEventListener("battery", (e) => {
+    const b = e.detail, pct = document.querySelector("[data-battery-pct]"), d = document.querySelector("[data-battery-detail]");
+    if (!pct) return;
+    pct.className = "font-monospace fw-semibold battery-" + (b ? b.level : "none");
+    pct.innerHTML = `<i class="bi bi-${b ? b.icon : "battery"}"></i> ${b ? b.percent + "%" : "—"}`;
+    d.textContent = !b ? "No battery reading. On the device, set BATTERY_BACKEND for your UPS board."
+      : b.charging ? "Charging from USB-C." : b.level === "critical" ? "Almost empty. Plug in now; it shuts down safely at 5%."
+      : b.level === "low" ? "Low. Plug in the USB-C adapter soon." : "Running on battery.";
+  });
+  // Save instantly whenever a dropdown changes, and apply theme / text size right away.
+  (function () {
+    const form = document.querySelector("[data-settings-form]");
+    const note = document.querySelector("[data-saved-note]");
+    let t;
+    form.addEventListener("change", async () => {
+      const data = new FormData(form);
+      window.applyAppearance(data.get("theme"), data.get("text_size"), data.get("accent"));
+      const name = document.querySelector("[data-accent-name]");
+      if (name && data.get("accent")) name.textContent = data.get("accent")[0].toUpperCase() + data.get("accent").slice(1);
+      try {
+        const r = await fetch(form.action, { method: "POST", body: data, headers: { "X-Requested-With": "fetch" } });
+        if (r.ok) { note.style.visibility = "visible"; clearTimeout(t); t = setTimeout(() => (note.style.visibility = "hidden"), 1500); }
+      } catch (e) { /* briefly offline - the choice still applies on this page */ }
+    });
+  })();
+</script>
+{% endblock %}

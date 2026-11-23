@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "admin/_catalog_actions.html" import catalog_actions %}
+{% block title %}Departments{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Departments</h1><div class="sub">The colleges instructors can pick in their profile. The name is printed on the attendance sheet header.</div></div>
+</div>
+<div class="card mb-3"><div class="card-body">
+  <h2 class="card-title-sm"><i class="bi bi-plus-circle"></i> Add department</h2>
+  <form method="post" action="{{ url_for('admin.add_department') }}" class="row g-2 align-items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-sm-8">
+      <label class="form-label" for="department-name">Department name</label>
+      <input id="department-name" name="name" maxlength="80" required value="{{ name }}"
+             class="form-control{% if errors.get('name') %} is-invalid{% endif %}"
+             placeholder="e.g. College of Engineering" autocomplete="off">
+      {% if errors.get('name') %}<div class="invalid-feedback">{{ errors.name }}</div>{% endif %}
+    </div>
+    <div class="col-sm-4"><button class="btn btn-primary w-100">Add department</button></div>
+  </form>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2 class="card-title-sm"><i class="bi bi-building"></i> Departments</h2>
+  <p class="small text-muted">Disabled departments stay on the profiles and reports of instructors who already use them.</p>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Name</th><th>Status</th><th class="text-end">Action</th></tr></thead>
+    <tbody>{% for d in departments %}
+      <tr>
+        <td class="fw-semibold">{{ d.name }}</td>
+        <td><span class="chip {{ 'chip-ok' if d.is_active else 'chip-bad' }}">{{ 'Active' if d.is_active else 'Disabled' }}</span></td>
+        <td class="text-end">
+          {{ catalog_actions(d.name, d.is_active, url_for('admin.department_status'),
+                             url_for('admin.department_remove'), 'department', 'name') }}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="3" class="text-muted">No departments yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div></div>
+{% endblock %}

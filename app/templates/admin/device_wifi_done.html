@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Wi-Fi changed{% endblock %}
+{% block content %}
+<div class="card mx-auto" style="max-width: 560px"><div class="card-body p-4 text-center">
+  <div class="tap-ring ok"><i class="bi bi-wifi"></i></div>
+  <h1 class="h4 fw-bold">The Wi-Fi is changing now</h1>
+  <p class="text-muted">In a few seconds this phone will be disconnected. Then:</p>
+  <ol class="text-start d-grid gap-1">
+    <li>Open your phone's Wi-Fi settings.</li>
+    <li>Join <b>{{ name }}</b> with the new password.</li>
+    <li>Open the website again: <span class="font-monospace">http://prof.attendance.lan</span></li>
+  </ol>
+  <p class="small text-muted mb-0">Phones that remembered the old Wi-Fi won't connect by themselves: they need the new
+    name and password too. If the new Wi-Fi doesn't appear within a minute, restart the device.</p>
+</div></div>
+{% endblock %}

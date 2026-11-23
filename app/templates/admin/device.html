@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Device settings{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Device settings</h1>
+    <div class="sub">The instructor registration code and the device's Wi-Fi.</div></div>
+</div>
+
+<div class="cq cq-2" style="align-items: start">
+  {# ---------------------------------------------------------------- instructor code #}
+  <div class="card"><div class="card-body">
+    <div class="card-title-sm"><i class="bi bi-person-badge"></i> Instructor registration code</div>
+    <p class="small text-muted">New instructors type this code to create their account on the instructor site.
+      Change it whenever it may have been shared too widely; existing instructors aren't affected.</p>
+    <div class="setting-row">
+      <div class="me-auto">Current code</div>
+      <span class="font-monospace fw-bold" data-code hidden>{{ instructor_code }}</span>
+      <span class="font-monospace" data-code-mask>••••••</span>
+      <button type="button" class="btn btn-sm btn-light" data-toggle-code>Show</button>
+    </div>
+    <form method="post" action="{{ url_for('admin.device_instructor_code') }}" class="mt-3" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label" for="code">New code</label>
+      <div class="d-flex gap-2">
+        <input id="code" name="code" class="form-control font-monospace{% if errors.code %} is-invalid{% endif %}"
+               value="{{ form.get('code', '') }}" maxlength="30" autocomplete="off" placeholder="e.g. LSPU-PROF-2027" required>
+        <button class="btn btn-primary flex-shrink-0">Save</button>
+      </div>
+      {% if errors.code %}<div class="text-danger small mt-1">{{ errors.code }}</div>
+      {% else %}<div class="form-text">4-30 letters, numbers, dots, dashes or underscores.</div>{% endif %}
+    </form>
+  </div></div>
+
+  {# ---------------------------------------------------------------- hotspot Wi-Fi #}
+  <div class="card"><div class="card-body">
+    <div class="card-title-sm"><i class="bi bi-wifi"></i> Device Wi-Fi (hotspot)</div>
+    <div class="setting-row">
+      <div class="me-auto">Current Wi-Fi name</div>
+      <span class="fw-semibold">{{ wifi_name or 'unknown' }}</span>
+    </div>
+    {% if not wifi_available %}
+      <div class="alert alert-info small mt-3 mb-0"><i class="bi bi-info-circle"></i>
+        <span>Changing the Wi-Fi from here needs a one-time setup on the device:
+          <code>bash deploy/device-settings.sh</code></span></div>
+    {% else %}
+      <div class="alert alert-warning small mt-3"><i class="bi bi-exclamation-triangle"></i>
+        <span><b>Every phone will be disconnected</b>, including yours. About 5 seconds after you save,
+          join the <b>new</b> Wi-Fi name with the new password. Tell instructors and students the new details.</span></div>
+      <form method="post" action="{{ url_for('admin.device_wifi') }}" novalidate
+            data-confirm="Change the Wi-Fi now? Every phone will be disconnected and must join the new Wi-Fi."
+            data-confirm-ok="Change Wi-Fi" data-confirm-icon="wifi">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label" for="wifi_name">New Wi-Fi name</label>
+          <input id="wifi_name" name="wifi_name" class="form-control{% if errors.wifi_name %} is-invalid{% endif %}"
+                 value="{{ form.get('wifi_name', wifi_name or '') }}" maxlength="32" autocomplete="off" required>
+          {% if errors.wifi_name %}<div class="invalid-feedback">{{ errors.wifi_name }}</div>{% endif %}
+        </div>
+        <div class="row g-2">
+          <div class="col-sm-6 mb-3">
+            <label class="form-label" for="wifi_password">New Wi-Fi password</label>
+            <input id="wifi_password" name="wifi_password" type="password" minlength="8" maxlength="63"
+                   class="form-control{% if errors.wifi_password %} is-invalid{% endif %}" autocomplete="new-password" required>
+            {% if errors.wifi_password %}<div class="invalid-feedback">{{ errors.wifi_password }}</div>
+            {% else %}<div class="form-text">At least 8 characters.</div>{% endif %}
+          </div>
+          <div class="col-sm-6 mb-3">
+            <label class="form-label" for="wifi_confirm">Type it again</label>
+            <input id="wifi_confirm" name="wifi_confirm" type="password" maxlength="63"
+                   class="form-control{% if errors.wifi_confirm %} is-invalid{% endif %}" autocomplete="new-password" required>
+            {% if errors.wifi_confirm %}<div class="invalid-feedback">{{ errors.wifi_confirm }}</div>{% endif %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="admin_password">Your admin password</label>
+          <input id="admin_password" name="admin_password" type="password"
+                 class="form-control{% if errors.admin_password %} is-invalid{% endif %}" autocomplete="current-password" required>
+          {% if errors.admin_password %}<div class="invalid-feedback">{{ errors.admin_password }}</div>{% endif %}
+        </div>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-wifi"></i> Change Wi-Fi</button>
+      </form>
+    {% endif %}
+  </div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const btn = document.querySelector("[data-toggle-code]");
+    if (!btn) return;
+    const code = document.querySelector("[data-code]"), mask = document.querySelector("[data-code-mask]");
+    btn.addEventListener("click", () => {
+      const show = code.hidden;
+      code.hidden = !show; mask.hidden = show; btn.textContent = show ? "Hide" : "Show";
+    });
+  })();
+</script>
+{% endblock %}

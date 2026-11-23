@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}My classes{% endblock %}
+{% block body_class %}page-student-classes{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>My classes</h1>
+    <div class="sub">{{ classes|length }} class{{ '' if classes|length == 1 else 'es' }} joined. Type a join code from your instructor to add one.</div>
+  </div>
+  <form method="post" action="{{ url_for('student.join') }}" class="join-form actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input name="join_code" class="form-control font-monospace text-uppercase"
+           placeholder="Join code" maxlength="10" required aria-label="Join code">
+    <button class="btn btn-primary btn-icon" name="action" value="join"><i class="bi bi-plus-lg"></i> Join</button>
+    <button class="btn btn-outline-primary" name="action" value="request">Request approval</button>
+  </form>
+</div>
+
+{% if join_requests %}
+<div class="card mb-3"><div class="card-body">
+  <div class="card-title-sm"><i class="bi bi-hourglass-split"></i> Requests</div>
+  {% for jr in join_requests %}
+    <div class="small border rounded p-2 mb-2">{{ jr.subject_code }} · {{ jr.section_name }}:
+      <b>{{ 'Awaiting instructor approval' if jr.status == 'pending' else ('Declined' if jr.status == 'rejected' else 'Approved') }}</b></div>
+  {% endfor %}
+</div></div>
+{% endif %}
+
+{# one tile per class: what + who on top, when in the middle, how you're doing at the bottom #}
+<div class="student-classes-scroll" role="region" aria-label="My classes" tabindex="0">
+<div class="class-grid">
+  {% for c in classes %}
+    {% set s = c.summary %}
+    {% set tone = 'none' if s.rate is none else ('bad' if s.rate < 80 else ('warn' if s.rate < 90 else 'ok')) %}
+    <div class="class-tile">
+      <a class="class-tile-link text-reset" href="{{ url_for('student.class_page', section_id=c.section_id) }}">
+        <div class="class-tile-top">
+          <span class="subject-code">{{ c.code }}</span>
+          {% if c.ended_at %}<span class="chip chip-muted">Semester ended</span>{% endif %}
+          <i class="bi bi-chevron-right text-muted ms-auto"></i>
+        </div>
+        <div class="class-tile-title">{{ c.title }}</div>
+        <div class="class-tile-meta">
+          <span><i class="bi bi-people"></i>{{ c.section_name }}</span>
+          <span><i class="bi bi-person"></i>{% if c.prof_title %}{{ c.prof_title }} {% endif %}{{ c.prof_first }} {{ c.prof_last }}</span>
+        </div>
+        {% if c.schedule %}
+        <div class="class-tile-sched">
+          {% for sc in c.schedule %}
+            <span class="sched-pill"><b>{{ sc.day_name[:3] }}</b> {{ sc.start_time|time12 }} – {{ sc.end_time|time12 }}{% if sc.room %} · {{ sc.room }}{% endif %}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="class-tile-stats tone-{{ tone }}">
+          {% if s.rate is none %}
+            <span class="text-muted small"><i class="bi bi-hourglass"></i> No classes held yet</span>
+          {% else %}
+            <div class="rate-bar" role="img" aria-label="{{ s.rate }}% attendance"><span style="width: {{ s.rate }}%"></span></div>
+            <span class="rate-num">{{ s.rate }}%</span>
+            <span class="chip {{ 'chip-bad' if s.absent else 'chip-muted' }}">{{ s.absent }} absent</span>
+          {% endif %}
+        </div>
+        {# the instructor's drop rule: warn one absence before the limit, and at the limit #}
+        {% if c.drop_absences and not c.ended_at %}
+          {% if s.absent >= c.drop_absences %}
+            <div class="class-tile-alert bad"><i class="bi bi-exclamation-octagon"></i> You reached {{ c.drop_absences }} absences, the limit for this class. See your instructor.</div>
+          {% elif s.absent == c.drop_absences - 1 %}
+            <div class="class-tile-alert warn"><i class="bi bi-exclamation-triangle"></i> One more absence and you may be dropped (limit: {{ c.drop_absences }}).</div>
+          {% endif %}
+        {% endif %}
+      </a>
+      <div class="d-flex justify-content-end mt-2">{% include 'student/_leave_class.html' %}</div>
+    </div>
+  {% else %}
+    <div class="card"><div class="empty py-5"><i class="bi bi-door-open"></i><h3>No classes yet</h3>
+      <p class="mb-0">Type the join code your instructor gave you.</p></div></div>
+  {% endfor %}
+</div>
+</div>
+{% endblock %}

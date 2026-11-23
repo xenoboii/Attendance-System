@@ -1,0 +1,30 @@
+{% extends "auth_base.html" %}
+{% from "_macros.html" import field, name_fields, password_fields %}
+{% block title %}Instructor registration{% endblock %}
+{% block box_class %}xwide{% endblock %}
+{% block content %}
+<span class="role-tag"><i class="bi bi-shield-lock"></i> Requires instructor code</span>
+<h1>Create an instructor account</h1>
+<p class="sub">Ask the system administrator for the instructor registration code.</p>
+
+<form method="post" novalidate data-confirm-icon="key-fill" data-confirm-title="Save your backup codes"
+      data-confirm-ok="Create account"
+      data-confirm="Upon registering, a PDF with 10 backup codes will download. Keep it safe: it's the only way to recover your account if you forget your password.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="register-grid">
+  <div>
+  {{ field("registration_code", "Instructor registration code", form, errors, type="password", required=true) }}
+  {{ field("username", "Username", form, errors, required=true, placeholder="e.g. jdelacruz",
+           help="You will use this to log in.", autocomplete="username") }}
+  {{ field("email", "Email (optional)", form, errors, type="email", autocomplete="email") }}
+  </div>
+  <div>
+  {{ name_fields(form, errors) }}
+  {{ password_fields(form, errors) }}
+  </div>
+  </div>
+  <button class="btn btn-primary w-100 py-2">Create instructor account</button>
+</form>
+
+<p class="auth-switch">Already registered? <a href="{{ url_for('auth.login') }}" class="fw-semibold">Log in</a></p>
+{% endblock %}

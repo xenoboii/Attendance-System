@@ -13,3 +13,11 @@ logs/
 # licensed Microsoft Office font - copied locally, not published
 app/static/fonts/OLDENGL.TTF
 
+# local editor / assistant settings (paths on one PC only)
+.claude/
+
+# OS clutter
+Thumbs.db
+desktop.ini
+.DS_Store
+

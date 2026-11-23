@@ -1,0 +1,19 @@
+# Text files are stored with LF line endings in the repository.
+* text=auto
+
+# Shell scripts run on the Raspberry Pi: always LF, even when checked out on Windows
+# (a CRLF script fails on Linux with "bad interpreter" / "$'\r': command not found").
+*.sh text eol=lf
+deploy/* text eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat text eol=crlf
+
+# Binary files: never touch
+*.png binary
+*.jpg binary
+*.stl binary
+*.docx binary
+*.woff2 binary
+*.woff binary
+*.ttf binary

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Student support{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('admin.students') }}">Student support</a><i class="bi bi-chevron-right small"></i>{{ st.student_number }}</div>
+<div class="page-header"><div><h1>{{ st.last_name }}, {{ st.first_name }}</h1><div class="sub">{{ st.student_number }} · {{ st|course_section }}</div></div></div>
+<div class="card mb-3"><div class="card-body">
+  <h2 class="card-title-sm">Student information</h2>
+  <form method="post" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ field('student_number', 'Student number', form, errors, required=true) }}
+    <div class="row g-2">
+      <div class="col-sm-6">{{ field('first_name', 'First name', form, errors, required=true) }}</div>
+      <div class="col-sm-6">{{ field('last_name', 'Last name', form, errors, required=true) }}</div>
+      <div class="col-sm-6">{{ field('middle_name', 'Middle name', form, errors) }}</div>
+      <div class="col-sm-6">{{ field('suffix', 'Suffix', form, errors) }}</div>
+      <div class="col-sm-6">{{ field('contact_number', 'Mobile number', form, errors) }}</div>
+      <div class="col-sm-6">{{ field('email', 'Email', form, errors, type='email') }}</div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-5"><label class="form-label" for="support-course">Course</label>
+        <select class="form-select" id="support-course" name="program"><option value="">—</option>
+          {% for course in courses %}<option value="{{ course.code }}" {{ 'selected' if (form.get('program') or '')|upper == course.code }}>{{ course.code }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-4"><label class="form-label" for="support-year">Year</label>
+        <select class="form-select" id="support-year" name="year_level"><option value="">—</option>
+          {% for year in range(1, 6) %}<option value="{{ year }}" {{ 'selected' if form.get('year_level')|string == year|string }}>{{ year }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-3"><label class="form-label" for="support-section">Section</label>
+        <select class="form-select" id="support-section" name="section_letter"><option value="">—</option>
+          {% for letter in 'ABCDEFG' %}<option value="{{ letter }}" {{ 'selected' if form.get('section_letter') == letter }}>{{ letter }}</option>{% endfor %}
+          {% if st.section_letter and st.section_letter not in 'ABCDEFG' %}<option value="{{ st.section_letter }}" selected>{{ st.section_letter }}</option>{% endif %}
+        </select>
+      </div>
+    </div>
+    {% for key in ('program','year_level','section_letter') %}{% if errors.get(key) %}<p class="small text-danger">{{ errors[key] }}</p>{% endif %}{% endfor %}
+    <button class="btn btn-primary">Save corrections</button>
+  </form>
+</div></div>
+{# registered with a mistyped student number? move the imported history into this account #}
+{% if unclaimed and not is_unclaimed %}
+<div class="card mb-3" id="merge"><div class="card-body">
+  <h2 class="card-title-sm"><i class="bi bi-intersect"></i> Merge an imported record</h2>
+  <p class="small text-muted">After a device rebuild, an instructor's import brings back students who haven't registered yet.
+    If this student registered with a <b>mistyped student number</b>, their classes and attendance are still on the imported
+    record. Merging moves that history into this account and gives it the correct student number. Their password stays.</p>
+  <form method="post" action="{{ url_for('admin.student_merge', student_id=st.id) }}" class="row g-2 align-items-end"
+        data-confirm="Merge the chosen imported record into {{ st.first_name }} {{ st.last_name }}'s account? This account takes over its student number, classes and attendance. It can't be undone."
+        data-confirm-title="Merge imported record" data-confirm-ok="Merge">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-sm-8">
+      <label class="form-label" for="merge-source">Imported record (not registered yet)</label>
+      <select class="form-select" id="merge-source" name="source_id" required>
+        <option value="">— Choose —</option>
+        {% for u in unclaimed %}<option value="{{ u.id }}">{{ u.last_name }}, {{ u.first_name }} · {{ u.student_number }} · {{ u.classes }} class{{ '' if u.classes == 1 else 'es' }}, {{ u.records }} record{{ '' if u.records == 1 else 's' }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-4"><button class="btn btn-outline-primary w-100">Merge into this account</button></div>
+  </form>
+</div></div>
+{% endif %}
+{% if is_unclaimed %}
+<div class="alert alert-secondary small"><i class="bi bi-hourglass-split"></i>
+  This record was brought back by an instructor's import and the student hasn't registered yet. They claim it by registering
+  with student number <b class="font-monospace">{{ st.student_number }}</b>.</div>
+{% endif %}
+<div class="card"><div class="card-body">
+  <h2 class="card-title-sm">Attendance ID</h2>
+  <div class="id-row"><div class="me-auto"><b>School ID</b><div class="small text-muted">{{ 'Registered: ••••' ~ st.rfid_uid[-4:] if st.rfid_uid else 'Not registered' }}</div></div>
+    {% if st.rfid_uid %}<form method="post" action="{{ url_for('admin.remove_card', student_id=st.id) }}" data-confirm="Remove this school ID so the student can register a replacement?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-danger btn-sm">Remove card</button>
+    </form>{% endif %}
+  </div>
+  <div class="id-row align-items-start"><div class="me-auto"><b>Signature</b>
+    {% if st.signature_path %}<div><img class="signature-preview my-2" src="{{ url_for('auth.signature_image', user_id=st.id) }}" alt="Student signature"></div>{% endif %}
+    <div class="small text-muted">{{ 'Waiting for replacement signature' if st.must_resign else ('Saved' if st.signature_path else 'Not saved') }}</div>
+  </div>
+    <form method="post" action="{{ url_for('admin.signature_reset', student_id=st.id) }}" data-confirm="Allow the student to draw a replacement signature?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-secondary btn-sm">Reset signature</button>
+    </form>
+  </div>
+</div></div>
+{% endblock %}

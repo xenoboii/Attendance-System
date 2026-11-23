@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ c.code }} attendance{% endblock %}
+{% block body_class %}page-student-history{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('student.my_classes') }}">My classes</a><i class="bi bi-chevron-right small"></i>{{ c.code }}</div>
+<div class="page-header align-items-center">
+  <div class="min-w-0">
+    <h1>{{ c.title }}</h1>
+    {# code · section · instructor on one line; Leave class at the far right #}
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-2"><span class="subject-code">{{ c.code }}</span>
+      <span class="chip chip-muted">{{ c.section_name }}</span>
+      <span class="text-muted"><i class="bi bi-person"></i> {% if c.prof_title %}{{ c.prof_title }} {% endif %}{{ c.prof_first }} {{ c.prof_last }}</span></div>
+  </div>
+  <div class="actions">{% include 'student/_leave_class.html' %}</div>
+</div>
+
+{# schedule | attendance rate | present-late-absent-excused (2 x 2) #}
+<div class="class-summary mb-3">
+  <div class="card class-summary-schedule"><div class="card-body">
+    <div class="card-title-sm"><i class="bi bi-calendar-week"></i> Schedule</div>
+    <div class="class-summary-scroll" role="region" aria-label="Weekly class times" tabindex="0">
+      {% for sc in c.schedule %}
+        <div class="sched-line small"><span class="day">{{ sc.day_name[:3] }}</span>
+          <span class="text-nowrap">{{ sc.start_time|time12 }} – {{ sc.end_time|time12 }}</span>
+          {% if sc.room %}<span class="text-muted text-nowrap"><i class="bi bi-geo-alt"></i> {{ sc.room }}</span>{% endif %}</div>
+      {% else %}
+        <div class="small text-muted">No weekly schedule set.</div>
+      {% endfor %}
+    </div>
+  </div></div>
+
+  <div class="card"><div class="card-body d-flex align-items-center gap-3">
+    {% set rate = summary.rate %}
+    {% set ring = 'var(--ok)' if rate is none or rate >= 90 else ('var(--warn)' if rate >= 80 else 'var(--bad)') %}
+    <div class="rate-ring" style="--p: {{ rate or 0 }}; --c: {{ ring }}">
+      <span>{{ rate ~ '%' if rate is not none else '—' }}</span>
+    </div>
+    <div>
+      <div class="fw-semibold">Attendance rate</div>
+      <div class="small text-muted">{{ summary.held }} class{{ '' if summary.held == 1 else 'es' }} held so far.
+        Excused counts as present in your rate.</div>
+    </div>
+  </div></div>
+
+  <div class="class-summary-tiles">
+    {% for key, cls, icon, label in [('present', 'ok', 'check2-circle', 'Present'), ('late', 'warn', 'alarm', 'Late'),
+                                     ('absent', 'bad', 'person-x', 'Absent'), ('excused', 'info', 'envelope-paper', 'Excused')] %}
+      <div class="card stat">
+        <div class="stat-icon {{ cls }}" {% if cls == 'bad' %}style="background:var(--bad-50);color:var(--bad)"{% endif %}><i class="bi bi-{{ icon }}"></i></div>
+        <div><div class="value {{ 'text-danger' if key == 'absent' and summary.absent }}">{{ summary[key] }}</div><div class="label">{{ label }}</div></div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card table-card student-history-card">
+  <div class="card-body pb-0"><div class="card-title-sm"><i class="bi bi-clock-history"></i> Attendance history</div></div>
+  {% if history %}
+    {% set status_chip = {'present': 'chip-ok', 'late': 'chip-warn', 'absent': 'chip-bad', 'excused': 'chip-info', 'pending': 'chip-muted'} %}
+    <div class="table-responsive contained-table-scroll student-history-scroll" role="region" aria-label="Attendance history" tabindex="0">
+      <table class="table table-modern">
+        <thead><tr><th>Date</th><th>Class</th><th>Status</th><th>Checked in</th></tr></thead>
+        <tbody>
+          {% for h in history %}
+            <tr>
+              <td class="fw-semibold text-nowrap">{{ h.session_date|nicedate }}</td>
+              <td class="small">{{ types[h.type] }}{% if h.start_time %} · {{ h.start_time|time12 }}{% endif %}
+                {% if h.title %}<div class="text-muted">{{ h.title }}</div>{% endif %}</td>
+              <td><span class="chip {{ status_chip[h.status] }}">{{ 'Upcoming' if h.status == 'pending' else h.status|capitalize }}</span></td>
+              <td class="small text-muted text-nowrap">
+                {% if h.checked_in_at and h.method != 'manual' %}{{ h.checked_in_at[11:16]|time12 }} ·
+                  {{ 'ID' if h.method == 'rfid' else 'Web' }}
+                {% elif h.note == 'async' %}Async activity
+                {% elif h.note == 'no_class' %}No class · credited present
+                {% elif h.method == 'manual' %}Set by instructor{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><i class="bi bi-calendar2-week"></i><h3>No classes yet</h3><p class="mb-0">Your attendance will show here after the first class.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

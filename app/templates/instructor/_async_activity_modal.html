@@ -1,0 +1,40 @@
+{% macro async_activity_modal(action, subject_code, section_name, day=none, title='') %}
+<div class="modal fade" id="async-day-modal" tabindex="-1" aria-labelledby="async-day-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ action }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if not day %}
+      <input type="hidden" name="exception_date" value="">
+      <input type="hidden" name="as_async" value="1">
+      <input type="hidden" name="back" value="sessions">
+      {% endif %}
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 fw-bold" id="async-day-title"><i class="bi bi-house-door text-primary"></i> Async activity</h2>
+          <div class="small text-muted">{{ subject_code }} · {{ section_name }} ·
+            <span data-async-date-label>{{ day|nicedate if day else '' }}</span></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="async-day-name">Activity title <span class="text-danger">*</span></label>
+        <input type="text" id="async-day-name" name="title" class="form-control" maxlength="80" required
+               value="{{ title or '' }}" placeholder="e.g. Module 3 quiz" autocomplete="off">
+        {% if not day %}
+        <label class="form-label mt-3" for="async-day-time">Completion time (optional)</label>
+        <input type="time" id="async-day-time" name="start_time" class="form-control" aria-describedby="async-day-time-help">
+        <div class="form-text" id="async-day-time-help">The activity moves to Ended at this time.</div>
+        {% endif %}
+        <div class="form-text">
+          {% if day %}Check-in closes. Students without an attendance record are marked Present.
+          {% else %}Everyone enrolled is marked Present without checking in.{% endif %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-icon"><i class="bi bi-check2"></i> Make it async</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endmacro %}

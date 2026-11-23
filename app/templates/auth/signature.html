@@ -1,0 +1,55 @@
+{# first_time comes from the route: a new student finishing registration #}
+{% extends "auth_base.html" if first_time else "base.html" %}
+{% block title %}Your signature{% endblock %}
+{% block box_class %}wide{% endblock %}
+{% block content %}
+{% if first_time %}
+  <div class="steps">
+    <div class="step done"><span class="num"><i class="bi bi-check-lg"></i></span> Account details</div>
+    <div class="step done"><span class="num"><i class="bi bi-check-lg"></i></span> Backup codes</div>
+    <div class="step active"><span class="num">3</span> Signature</div>
+  </div>
+{% else %}
+  <div class="crumbs"><a href="{{ url_for('account.index') }}">My account</a><i class="bi bi-chevron-right small"></i>Signature</div>
+{% endif %}
+
+<div class="{{ '' if first_time else 'card' }}" style="{{ '' if first_time else 'max-width: 640px' }}">
+<div class="{{ '' if first_time else 'card-body p-4' }}">
+  <h1 class="{{ '' if first_time else 'h4 fw-bold' }}">{{ 'Sign again' if current_user.must_resign else 'Draw your signature' }}</h1>
+  <p class="sub text-muted">
+    {% if current_user.must_resign %}The admin asked you to redo your signature.
+    {% elif current_user.role == 'student' %}This goes on the attendance sheet when you tap your card. You only do this once.
+      (Checking in on the web asks you to sign each time.)
+    {% else %}Used on the reports you prepare.{% endif %}
+    Use your finger or mouse.
+  </p>
+
+  {% if error %}<div class="alert alert-danger"><i class="bi bi-x-circle-fill"></i><span>{{ error }}</span></div>{% endif %}
+
+  <div class="signature-box mb-3" id="signature-box">
+    <canvas id="signature-canvas"></canvas>
+    <span class="signature-line"><i class="bi bi-x-lg"></i> Sign above the line</span>
+  </div>
+
+  <div id="preview-wrap" class="mb-3 d-none">
+    <div class="small text-muted mb-1">Preview (this is what will be saved):</div>
+    <img id="preview" class="signature-preview" alt="Signature preview">
+  </div>
+
+  <form method="post" id="signature-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="signature" id="signature-data">
+    <div class="d-flex gap-2 flex-wrap">
+      <button type="button" class="btn btn-light btn-icon" id="clear-btn"><i class="bi bi-eraser"></i> Clear</button>
+      <button type="button" class="btn btn-outline-primary btn-icon" id="preview-btn"><i class="bi bi-eye"></i> Preview</button>
+      <button type="submit" class="btn btn-primary btn-icon ms-auto" id="save-btn"><i class="bi bi-check2"></i> Save signature</button>
+    </div>
+    <div id="empty-msg" class="text-danger small mt-2 d-none"><i class="bi bi-exclamation-circle"></i> Please draw your signature first.</div>
+  </form>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/signature_pad.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/signature.js') }}"></script>
+{% endblock %}

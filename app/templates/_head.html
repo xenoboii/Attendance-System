@@ -1,0 +1,51 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+{# Theme + text size, applied BEFORE anything is drawn (no white flash in dark mode).
+   Logged in: the account's choice. Login pages: the last choice on this device. #}
+<script>
+  (function () {
+    var root = document.documentElement;
+    var mq = window.matchMedia("(prefers-color-scheme: dark)");
+    // accent is optional: left out (e.g. the sun/moon button on the login page) keeps the current one
+    window.applyAppearance = function (theme, size, accent) {
+      theme = theme || "system"; size = size || "normal";
+      accent = accent || root.getAttribute("data-accent") || "default";
+      var dark = theme === "dark" || (theme === "system" && mq.matches);
+      root.setAttribute("data-bs-theme", dark ? "dark" : "light");
+      root.setAttribute("data-theme-pref", theme);
+      root.setAttribute("data-text-size", size);
+      root.setAttribute("data-accent", accent);
+      try { localStorage.setItem("appearance", JSON.stringify({ theme: theme, size: size, accent: accent })); } catch (e) {}
+    };
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem("appearance") || "{}"); } catch (e) {}
+    {% if current_user %}
+    window.applyAppearance({{ current_user.theme|default('system')|tojson }}, {{ current_user.text_size|default('normal')|tojson }}, {{ (current_user.accent if 'accent' in current_user.keys() else 'default')|tojson }});
+    {% else %}
+    window.applyAppearance(saved.theme, saved.size, saved.accent);
+    {% endif %}
+    // "System" follows the device live (e.g. phone switches to dark at night)
+    mq.addEventListener && mq.addEventListener("change", function () {
+      if (root.getAttribute("data-theme-pref") === "system")
+        window.applyAppearance("system", root.getAttribute("data-text-size"));
+    });
+  })();
+</script>
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="theme-color" content="{{ '#059669' if is_prof_site else '#4f46e5' }}">
+{# fonts load before the first paint, so text never flickers between pages #}
+{% for w in (400, 500, 600, 700) %}
+<link rel="preload" as="font" type="font/woff2" crossorigin
+      href="{{ url_for('static', filename='vendor/fonts/inter-latin-%d-normal.woff2' % w).split('?')[0] }}">
+{% endfor %}
+{# icon font too - EXACTLY the address bootstrap-icons.min.css asks for, so the browser reuses
+   the preloaded file instead of fetching it again (that gap is what made icons blink) #}
+<link rel="preload" as="font" type="font/woff2" crossorigin
+      href="{{ url_for('static', filename='vendor/bootstrap-icons/fonts/bootstrap-icons.woff2').split('?')[0] }}?dd67030699838ea613ee6dbda90effa6">
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% if config.DEBUG and config.SIMULATE_HARDWARE and request.remote_addr in ('127.0.0.1', '::1') %}
+<script src="{{ url_for('static', filename='js/livereload.js') }}" defer></script>
+{% endif %}

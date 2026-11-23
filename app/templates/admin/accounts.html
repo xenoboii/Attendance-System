@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Accounts</h1>
+  <div class="sub">Delete a student or instructor account, or restore one that was deleted (by you or by its owner).</div></div></div>
+
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="d-flex gap-2">
+    <input class="form-control" name="q" value="{{ query }}" placeholder="Search by name, student number or username" aria-label="Search accounts">
+    <button class="btn btn-primary">Search</button>
+  </form>
+</div></div>
+
+<div class="card table-card mb-3"><div class="table-responsive"><table class="table table-modern">
+  <thead><tr><th>Name</th><th>Login</th><th>Role</th><th></th></tr></thead>
+  <tbody>{% for a in accounts %}<tr>
+    <td class="fw-semibold text-nowrap">{{ a.last_name }}, {{ a.first_name }}
+      {% if a.role == 'student' and a.password_hash == '' %}<span class="chip chip-muted ms-1" title="Created by an instructor's import; not registered yet">Not registered yet</span>{% endif %}</td>
+    <td class="font-monospace">{{ a.student_number if a.role == 'student' else a.username }}</td>
+    <td><span class="chip {{ 'chip-info' if a.role == 'instructor' else 'chip-muted' }}">{{ a.role|capitalize }}</span></td>
+    <td class="text-end">
+      <form method="post" action="{{ url_for('admin.account_delete', user_id=a.id) }}"
+            data-confirm="Delete {{ a.first_name }} {{ a.last_name }}'s account? They can't log in any more{% if a.role == 'instructor' %} and their subjects are archived{% endif %}. You can restore it from the Deleted list."
+            data-confirm-title="Delete account" data-confirm-ok="Delete account">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger btn-icon text-nowrap"><i class="bi bi-trash"></i> Delete</button>
+      </form>
+    </td>
+  </tr>{% else %}<tr><td colspan="4" class="text-muted">No accounts found.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+
+<div class="card table-card" id="deleted-accounts"><div class="card-body pb-0">
+  <div class="card-title-sm"><i class="bi bi-person-x"></i> Deleted accounts <span class="chip chip-muted ms-1">{{ deleted|length }}</span></div></div>
+  {% if deleted %}
+  <div class="table-responsive"><table class="table table-modern">
+    <thead><tr><th>Name</th><th>Login</th><th>Role</th><th>Deleted</th><th></th></tr></thead>
+    <tbody>{% for d in deleted %}<tr>
+      <td class="fw-semibold text-nowrap">{{ d.last_name }}, {{ d.first_name }}</td>
+      <td class="font-monospace">{{ d.student_number if d.role == 'student' else d.username }}</td>
+      <td><span class="chip {{ 'chip-info' if d.role == 'instructor' else 'chip-muted' }}">{{ d.role|capitalize }}</span></td>
+      <td class="small text-muted text-nowrap">{{ d.deleted_at[:10]|nicedate }}
+        <div>{{ 'by themselves' if d.deleted_by == d.user_id else ('by ' ~ d.by_first ~ ' ' ~ d.by_last if d.by_first else '') }}</div></td>
+      <td><div class="d-flex flex-wrap justify-content-end gap-2">
+        <form method="post" action="{{ url_for('admin.account_restore', user_id=d.user_id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-light btn-icon text-nowrap"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.account_purge', user_id=d.user_id) }}"
+              data-confirm="Permanently delete {{ d.first_name }} {{ d.last_name }}'s account? {% if d.role == 'instructor' %}This deletes all their subjects, sections, and attendance records for those classes.{% else %}This deletes their attendance history, class memberships, and signatures.{% endif %} This cannot be undone."
+              data-confirm-title="Permanently delete account" data-confirm-ok="Delete Permanently">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-danger btn-icon text-nowrap"><i class="bi bi-trash" aria-hidden="true"></i> Delete Permanently</button>
+        </form>
+      </div></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="card-body pt-2 small text-muted">No deleted accounts.</div>{% endif %}
+</div>
+{% endblock %}

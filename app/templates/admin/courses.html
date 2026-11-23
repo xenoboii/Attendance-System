@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "admin/_catalog_actions.html" import catalog_actions %}
+{% block title %}Courses{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Courses</h1><div class="sub">Manage the courses available in student profiles.</div></div>
+</div>
+<div class="card mb-3"><div class="card-body">
+  <h2 class="card-title-sm"><i class="bi bi-plus-circle"></i> Add course</h2>
+  <form method="post" action="{{ url_for('admin.add_course') }}" class="row g-2 align-items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-sm-8">
+      <label class="form-label" for="course-code">Course abbreviation</label>
+      <input id="course-code" name="code" maxlength="10" required value="{{ code }}"
+             class="form-control text-uppercase{% if errors.get('code') %} is-invalid{% endif %}"
+             placeholder="e.g. BSCPE" autocomplete="off">
+      {% if errors.get('code') %}<div class="invalid-feedback">{{ errors.code }}</div>{% endif %}
+    </div>
+    <div class="col-sm-4"><button class="btn btn-primary w-100">Add course</button></div>
+  </form>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2 class="card-title-sm"><i class="bi bi-mortarboard"></i> Courses</h2>
+  <p class="small text-muted">Disabled courses remain on existing student profiles and reports.</p>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Abbreviation</th><th>Status</th><th class="text-end">Action</th></tr></thead>
+    <tbody>{% for course in courses %}
+      <tr>
+        <td class="fw-semibold font-monospace">{{ course.code }}</td>
+        <td><span class="chip {{ 'chip-ok' if course.is_active else 'chip-bad' }}">{{ 'Active' if course.is_active else 'Disabled' }}</span></td>
+        <td class="text-end">
+          {{ catalog_actions(course.code, course.is_active, url_for('admin.course_status', code=course.code),
+                             url_for('admin.course_remove', code=course.code), 'course') }}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="3" class="text-muted">No courses yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div></div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{# Live part of the session page - re-fetched every 3 seconds (see session.html) #}
+{% set phase = info.phase %}
+{% set phase_text = {'present': ('ok', 'Open · Present', ''),
+                     'late': ('warn', 'Open · Late', ''),
+                     'checkout': ('info', 'Check-out open', 'Check-in is closed. Students check out by tapping their card or on the web.'),
+                     'ended': ('muted', 'Closed', 'Check-in has ended. Students without a record are absent.'),
+                     'upcoming': ('info', 'Not open yet', 'Check-in is closed for now.'),
+                     'paused': ('muted', 'Paused', 'Check-in is closed for now.')}[phase] %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3" id="live-state" data-phase="{{ phase }}">
+  {% if s.type == 'async' %}
+  <span class="chip chip-info fs-6 px-3 py-2"><i class="bi bi-house-door"></i> Async activity</span>
+  <span class="small text-muted session-status-description">{% if phase == 'upcoming' %}Scheduled for {{ s.session_date|nicedate }}.{% else %}No check-in needed.{% endif %} You can adjust attendance below.</span>
+  {% else %}
+  <span class="chip chip-{{ phase_text[0] }} fs-6 px-3 py-2">{% if phase in ('present','late','checkout') %}<span class="dot pulse"></span>{% endif %}{{ phase_text[1] }}</span>
+  {% if phase_text[2] %}<span class="small text-muted session-status-description">{{ phase_text[2] }}</span>{% endif %}
+  {% endif %}
+  {% if s.type == 'async' %}
+  {% elif s.checkin_mode == 'auto' and info.window %}
+    <span class="small text-muted session-window"><i class="bi bi-magic"></i> Auto: opens {{ info.window.opens_at.strftime('%I:%M %p').lstrip('0') }},
+      late {{ info.window.late_at.strftime('%I:%M %p').lstrip('0') }}, closes {{ info.window.closes_at.strftime('%I:%M %p').lstrip('0') }}</span>
+  {% endif %}
+  {% if s.type != 'async' %}
+    <div class="ms-auto session-mode-slot">{% include 'instructor/_session_mode.html' %}</div>
+  {% endif %}
+</div>
+
+{# Click a tile to open a pop-up listing those students (see session.html). #}
+<div class="cq cq-tiles mb-3 session-counts">
+  {% for key, cls, icon, label in [('present', 'ok', 'check2-circle', 'Present'), ('late', 'warn', 'alarm', 'Late'),
+                                   ('absent' if info.finished else 'pending', '' if not info.finished else 'bad', 'person-x' if info.finished else 'hourglass', 'Absent' if info.finished else 'Not yet'),
+                                   ('excused', 'info', 'envelope-paper', 'Excused')] %}
+    <button type="button" class="card stat stat-open h-100" data-group="{{ key }}" data-label="{{ label }}"
+            data-icon="{{ icon }}" data-cls="{{ cls }}" title="See who is {{ label|lower }}">
+      <div class="stat-icon {{ cls }}"><i class="bi bi-{{ icon }}"></i></div>
+      <div class="text-start"><div class="value">{{ counts[key] }}</div><div class="label">{{ label }}</div></div>
+      <i class="bi bi-box-arrow-up-right open-mark"></i>
+    </button>
+  {% endfor %}
+</div>
+
+<div class="card table-card session-roster-card">
+  {% if rows %}
+  <div class="table-responsive session-roster-scroll" data-roster-scroll role="region" aria-label="Student attendance list" tabindex="0">
+    <table class="table table-modern">
+      <thead><tr><th>Student</th><th>Status</th><th>Time</th><th>How</th><th class="text-end">Mark</th></tr></thead>
+      <tbody>
+        {% set status_chip = {'present': 'chip-ok', 'late': 'chip-warn', 'absent': 'chip-bad', 'excused': 'chip-info', 'pending': 'chip-muted'} %}
+        {% for r in rows %}
+          <tr data-status="{{ r.status }}">
+            <td><div class="fw-semibold text-nowrap">{{ r.last_name }}, {{ r.first_name }}{% if r.middle_name %} {{ r.middle_name[0] }}.{% endif %}</div>
+                <div class="small text-muted font-monospace">{{ r.student_number }}</div></td>
+            {# no record yet: just "—" until the class ends (then Absent, unless they joined after it) #}
+            <td>{% if r.status == 'pending' %}<span class="text-muted" title="{{ 'Joined after this class' if r.joined_later else 'Not checked in yet' }}">—</span>
+                {%- else %}<span class="chip {{ status_chip[r.status] }}">{{ r.status|capitalize }}</span>{% endif %}</td>
+            <td class="small text-nowrap">{{ r.checked_in_at[11:16]|time12 if r.checked_in_at and r.method != 'manual' else '—' }}
+              {%- if r.checked_out_at %}<div class="text-muted"><i class="bi bi-box-arrow-right"></i> Out {{ r.checked_out_at[11:16]|time12 }}</div>
+              {%- elif r.note == 'No check-out' %}<div><span class="chip chip-bad"><i class="bi bi-box-arrow-right"></i> No check-out</span></div>
+              {%- elif s.checkout_open_at and r.record_status in ('present', 'late') %}<div class="text-muted">Not out yet</div>{% endif %}</td>
+            <td class="small text-muted text-nowrap">{% if r.note == 'async' %}<i class="bi bi-house-door"></i> Auto (async)
+              {% elif r.note == 'no_class' %}<i class="bi bi-calendar-x"></i> No class (credited)
+              {% elif r.method == 'rfid' %}<i class="bi bi-credit-card-2-front"></i> ID
+              {% elif r.method == 'web' %}<i class="bi bi-phone"></i> Web{% elif r.method == 'manual' %}<i class="bi bi-pencil"></i> By you{% else %}—{% endif %}</td>
+            <td class="text-end text-nowrap">
+              <div class="btn-group btn-group-sm" role="group" aria-label="Mark {{ r.first_name }}">
+                {% for st, lbl, title in [('present', 'P', 'Present'), ('late', 'L', 'Late'), ('absent', 'A', 'Absent'), ('excused', 'E', 'Excused')] %}
+                  <button type="button" class="btn {{ 'btn-primary' if r.record_status == st else 'btn-light' }} js-mark"
+                          data-student="{{ r.id }}" data-status="{{ st }}" title="Mark {{ title }}"
+                          aria-label="Mark {{ r.first_name }} {{ r.last_name }} {{ title|lower }}">{{ lbl }}<span class="mark-word">{{ title[1:] }}</span></button>
+                {% endfor %}
+                {% if r.record_status %}<button type="button" class="btn btn-light js-mark" data-student="{{ r.id }}" data-status="clear" title="Clear" aria-label="Clear mark for {{ r.first_name }} {{ r.last_name }}"><i class="bi bi-x"></i></button>{% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty"><i class="bi bi-people"></i><h3>No students enrolled</h3><p class="mb-0">Add students in the Students tab.</p></div>
+  {% endif %}
+</div>

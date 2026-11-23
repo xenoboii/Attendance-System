@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, select %}
+{% block title %}{{ 'Edit' if subject else 'New' }} subject{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('instructor.dashboard') }}">My subjects</a>
+  {% if subject %}<i class="bi bi-chevron-right small"></i><a href="{{ url_for('instructor.subject', subject_id=subject.id) }}">{{ subject.code }}</a>{% endif %}
+  <i class="bi bi-chevron-right small"></i>{{ 'Edit' if subject else 'New subject' }}</div>
+<div class="page-header"><div><h1>{{ 'Edit subject' if subject else 'New subject' }}</h1>
+  <div class="sub">Sections, students and schedules are added on the next page.</div></div></div>
+
+<div class="card subject-form-card"><div class="card-body p-4">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row g-2">
+      <div class="col-sm-4">{{ field("code", "Subject code", form, errors, required=true, placeholder="IT 312") }}</div>
+      <div class="col-sm-8">{{ field("title", "Subject title", form, errors, required=true, placeholder="Embedded Systems") }}</div>
+      <div class="col-sm-5">{{ field("school_year", "School year", form, errors, required=true, placeholder="2026-2027") }}</div>
+      <div class="col-sm-4">{{ select("semester", "Semester", form, errors, semesters, required=true) }}</div>
+      <div class="col-sm-3 mb-3">
+        <label class="form-label" for="units">Units</label>
+        <input id="units" name="units" type="number" inputmode="decimal" min="0.5" max="12" step="any"
+               class="form-control{% if errors.get('units') %} is-invalid{% endif %}" placeholder="3"
+               value="{{ form.get('units') if form.get('units') is not none else '' }}">
+        {% if errors.get('units') %}<div class="invalid-feedback">{{ errors.units }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="mb-4">
+      <label class="form-label" for="description">Description (optional)</label>
+      <textarea id="description" name="description" class="form-control" rows="2">{{ form.get('description') or '' }}</textarea>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary btn-icon"><i class="bi bi-check2"></i> Save subject</button>
+      <a class="btn btn-light" href="{{ url_for('instructor.subject', subject_id=subject.id) if subject else url_for('instructor.dashboard') }}">Cancel</a>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Backup codes{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Backup codes</h1>
+  <div class="sub">Someone lost their backup codes? Give them one single-use code. They use it on Forgot password?, then make their own new set in My account.</div></div></div>
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="d-flex gap-2">
+    <input class="form-control" name="q" value="{{ query }}" placeholder="Search by name, student number or username" aria-label="Search accounts">
+    <button class="btn btn-primary">Search</button>
+  </form>
+</div></div>
+<div class="card table-card"><div class="table-responsive"><table class="table table-modern">
+  <thead><tr><th>Name</th><th>Login</th><th>Role</th><th>Codes left</th><th></th></tr></thead>
+  <tbody>{% for a in accounts %}<tr>
+    <td class="fw-semibold text-nowrap">{{ a.last_name }}, {{ a.first_name }}</td>
+    <td class="font-monospace">{{ a.student_number if a.role == 'student' else a.username }}</td>
+    <td><span class="chip {{ 'chip-info' if a.role == 'instructor' else 'chip-muted' }}">{{ a.role|capitalize }}</span></td>
+    <td class="text-nowrap">
+      {% if not a.total %}<span class="chip chip-warn">None yet</span>
+      {% else %}<span class="chip {{ 'chip-bad' if a.unused == 0 else ('chip-warn' if a.unused <= 3 else 'chip-ok') }}">{{ a.unused }} of {{ a.total }} unused</span>
+        <div class="small text-muted">made {{ a.created_at[:10]|nicedate }}</div>{% endif %}
+    </td>
+    <td class="text-end">
+      <form method="post" action="{{ url_for('admin.backup_codes_issue', user_id=a.id) }}"
+            data-confirm="Give {{ a.first_name }} {{ a.last_name }} one single-use backup code? Make sure it is really them asking."
+            data-confirm-title="Issue a backup code" data-confirm-ok="Issue code" data-confirm-icon="key">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-light btn-icon text-nowrap"><i class="bi bi-key"></i> Issue a code</button>
+      </form>
+    </td>
+  </tr>{% else %}<tr><td colspan="5" class="text-muted">No accounts found.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% from "instructor/_async_activity_modal.html" import async_activity_modal %}
+{% block title %}{{ s.subject_code }} {{ s.section_name }} · {{ s.session_date|nicedate }}{% endblock %}
+{% block body_class %}page-instructor-session{% endblock %}
+{% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('instructor.dashboard') }}">My subjects</a><i class="bi bi-chevron-right small"></i>
+  <a href="{{ url_for('instructor.section', section_id=s.section_id, tab='sessions') }}">{{ s.subject_code }} {{ s.section_name }}</a>
+  <i class="bi bi-chevron-right small"></i>{{ s.session_date|nicedate }}
+</div>
+<div class="page-header">
+  <div>
+    <h1>{{ s.session_date|nicedate(true) }}</h1>
+    <div class="sub">{{ s.subject_code }} · {{ s.section_name }} · {{ types[s.type] }}
+      {% if s.start_time %}· {{ s.start_time|time12 }}{% if s.end_time and s.type != 'async' %} – {{ s.end_time|time12 }}{% endif %}{% endif %}
+      {% if s.title %}· {{ s.title }}{% endif %}</div>
+  </div>
+</div>
+
+<div class="session-workspace">
+  <div class="session-main-column">
+    <div id="live" data-url="{{ url_for('instructor.session_live', session_id=s.id) }}"
+         data-mark-url="{{ url_for('instructor.session_mark', session_id=s.id, student_id=0) }}">
+      {% include "instructor/_session_live.html" %}
+    </div>
+  </div>
+
+  <div class="session-side-column">
+    <!-- live controls (refreshed with the roster) -->
+    <div id="controls" data-url="{{ url_for('instructor.session_live', session_id=s.id, part='controls') }}">
+      {% include "instructor/_session_controls.html" %}
+    </div>
+
+    <!-- web check-in code (not for async: nobody checks in) -->
+    {% if s.type != 'async' %}
+    <div class="card session-code-card"><div class="card-body">
+      <div class="card-title-sm"><i class="bi bi-shield-check"></i> Web check-in code</div>
+      {% if s.checkin_code %}
+        <div class="text-center py-1">
+          <div class="h3 fw-bold font-monospace" style="letter-spacing:.2em;color:var(--brand)">{{ s.checkin_code }}</div>
+          <div class="small text-muted mb-2">Enter this code on the web.</div>
+        </div>
+      {% else %}
+        <p class="small text-muted mb-2">Require a 4-digit code for web check-in. ID taps never need it.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('instructor.session_code', session_id=s.id) }}" class="d-flex gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button name="enabled" value="1" class="btn btn-sm btn-outline-primary flex-fill">{{ 'New code' if s.checkin_code else 'Require a code' }}</button>
+        {% if s.checkin_code %}<button name="enabled" value="0" class="btn btn-sm btn-light flex-fill">Turn off</button>{% endif %}
+      </form>
+    </div></div>
+    {% endif %}
+
+  </div>
+</div>
+
+{% if s.type != 'async' and not s.subject_ended_at %}
+  {{ async_activity_modal(url_for('instructor.session_set_async', session_id=s.id), s.subject_code, s.section_name, day=s.session_date, title=s.title) }}
+{% endif %}
+
+<!-- pop-up: students in one group (opened by clicking a count tile) -->
+<div class="modal fade" id="group-modal" tabindex="-1" aria-labelledby="group-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header align-items-center">
+        <div class="d-flex align-items-center gap-2">
+          <span data-g-icon class="stat-icon"></span>
+          <div>
+            <h2 class="modal-title h5 fw-bold mb-0" id="group-title"><span data-g-title></span>
+              <span class="chip chip-muted ms-1" data-g-count></span></h2>
+            <div class="small text-muted">{{ s.subject_code }} · {{ s.section_name }} · {{ s.session_date|nicedate }}</div>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <ol class="group-list" data-g-list></ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- delete: last on every screen size -->
+<div class="card mt-3 session-remove"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+  <div class="me-auto">
+    <div class="card-title-sm text-danger mb-1"><i class="bi bi-trash text-danger"></i> Remove this column</div>
+    <div class="small text-muted">Added by mistake or class cancelled? Deleting removes this date from reports{{ ' (its check-ins are kept in the log)' if has_records }}.</div>
+  </div>
+  <form method="post" action="{{ url_for('instructor.session_delete', session_id=s.id) }}"
+        data-confirm="{{ 'Students already checked in to this session. ' if has_records }}Delete the {{ s.session_date|nicedate }} column? It won't appear in reports. You can restore it from Recently deleted within 30 days.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm btn-outline-danger btn-icon"><i class="bi bi-trash"></i> Delete session</button>
+  </form>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Live roster: refresh every 3 s; P / L / A / E buttons save without reloading the page.
+  (function () {
+    document.getElementById("async-day-modal")?.addEventListener("shown.bs.modal", (event) => {
+      event.target.querySelector("input[name=title]").focus();
+    });
+    const live = document.getElementById("live");
+    const token = document.querySelector('meta[name="csrf-token"]').content;
+    let busy = false;
+
+    const controls = document.getElementById("controls");
+    live.addEventListener("change", (event) => {
+      if (event.target.matches("[data-session-mode]")) event.target.form.requestSubmit();
+    });
+
+    // ---- tiles: click Present / Late / Absent (Not yet) / Excused -> pop-up listing those students.
+    // The list is read from the roster below, and refreshes itself while the pop-up is open.
+    const groupModalEl = document.getElementById("group-modal");
+    const groupModal = new bootstrap.Modal(groupModalEl);
+    let openGroup = null;
+    const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    function renderGroup() {
+      if (!openGroup) return;
+      const tile = live.querySelector(`.stat-open[data-group="${openGroup}"]`);
+      if (!tile) return;
+      const rows = [...live.querySelectorAll(`tbody tr[data-status="${openGroup}"]`)];
+      groupModalEl.querySelector("[data-g-title]").textContent = tile.dataset.label;
+      groupModalEl.querySelector("[data-g-count]").textContent = rows.length;
+      const icon = groupModalEl.querySelector("[data-g-icon]");
+      icon.className = "stat-icon " + tile.dataset.cls;
+      icon.innerHTML = `<i class="bi bi-${tile.dataset.icon}"></i>`;
+      groupModalEl.querySelector("[data-g-list]").innerHTML = rows.length ? rows.map((tr, i) => {
+        const c = tr.cells;
+        const name = c[0].querySelector(".fw-semibold").textContent.trim();
+        const num = c[0].querySelector(".font-monospace").textContent.trim();
+        const time = c[2].textContent.trim();
+        const how = c[3].textContent.trim().replace(/\s+/g, " ");
+        return `<li class="group-row"><span class="text-muted small num">${i + 1}</span>
+                  <div class="flex-grow-1 min-w-0"><div class="fw-semibold text-truncate">${esc(name)}</div>
+                  <div class="small text-muted font-monospace">${esc(num)}</div></div>
+                  <div class="text-end small text-muted text-nowrap">${time !== "—" ? esc(time) + "<br>" : ""}${how !== "—" ? esc(how) : ""}</div></li>`;
+      }).join("") : `<li class="text-center text-muted py-4">No students here.</li>`;
+    }
+    live.addEventListener("click", (e) => {
+      const tile = e.target.closest(".stat-open");
+      if (!tile) return;
+      openGroup = tile.dataset.group;
+      renderGroup();
+      groupModal.show();
+    });
+    groupModalEl.addEventListener("hidden.bs.modal", () => (openGroup = null));
+    new MutationObserver(renderGroup).observe(live, { childList: true });   // live refresh while open
+    // only touch the page when something actually changed (no flicker every 3 s)
+    const last = new WeakMap();
+    function replaceContent(el, html) {
+      const scroll = el.querySelector("[data-roster-scroll]");
+      const position = scroll ? {top: scroll.scrollTop, left: scroll.scrollLeft} : null;
+      el.innerHTML = html;
+      const updated = el.querySelector("[data-roster-scroll]");
+      if (position && updated) {
+        updated.scrollTop = position.top;
+        updated.scrollLeft = position.left;
+      }
+    }
+    async function load(el) {
+      const r = await fetch(el.dataset.url, { headers: { "X-Requested-With": "fetch" } });
+      if (!r.ok) return;
+      const html = await r.text();
+      if (last.get(el) === html) return;
+      if (el.contains(document.activeElement) && document.activeElement !== document.body) return;  // don't yank focus
+      replaceContent(el, html);
+      last.set(el, html);
+    }
+    async function refresh() {
+      if (busy || document.hidden) return;
+      try { await Promise.all([load(live), load(controls)]); } catch (e) { /* device briefly unreachable */ }
+    }
+    setInterval(refresh, 3000);
+
+    live.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".js-mark");
+      if (!btn) return;
+      busy = true;
+      btn.disabled = true;
+      const url = live.dataset.markUrl.replace(/\/0$/, "/" + btn.dataset.student);
+      try {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "X-Requested-With": "fetch", "X-CSRF-Token": token,
+                     "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ status: btn.dataset.status }),
+        });
+        if (r.ok) {
+          replaceContent(live, await r.text());
+          last.delete(live);
+        }
+      } finally { busy = false; }
+    });
+  })();
+</script>
+{% endblock %}

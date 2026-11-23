@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Archive{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Archive</h1>
+    <div class="sub">Subjects whose semester you ended. No more classes are scheduled for them; attendance records, reports and exports are kept.</div></div>
+</div>
+
+{% if subjects %}
+<div class="card table-card"><div class="table-responsive">
+  <table class="table table-modern">
+    <thead><tr><th>Subject</th><th>Term</th><th>Sections</th><th>Students</th><th>Ended</th><th></th></tr></thead>
+    <tbody>
+      {% for s in subjects %}
+      <tr>
+        <td><a class="fw-semibold text-reset" href="{{ url_for('instructor.subject', subject_id=s.id) }}">
+              <span class="subject-code">{{ s.code }}</span> {{ s.title }}</a></td>
+        <td class="text-nowrap">{{ s.school_year }} · {{ s.semester }} sem</td>
+        <td>{{ s.section_count }}</td>
+        <td>{{ s.student_count }}</td>
+        <td class="small text-muted text-nowrap">{{ s.ended_at[:10]|nicedate }}</td>
+        <td class="text-end text-nowrap">
+          <a class="btn btn-sm btn-light btn-icon" href="{{ url_for('instructor.subject', subject_id=s.id) }}"><i class="bi bi-eye"></i> Open</a>
+          <button type="button" class="btn btn-sm btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#copy-term-{{ s.id }}">
+            <i class="bi bi-arrow-repeat"></i> Copy to new term</button>
+          <form method="post" action="{{ url_for('instructor.subject_reopen', subject_id=s.id) }}" class="d-inline"
+                data-confirm="Reopen {{ s.code }}? Its weekly schedule will start creating classes again."
+                data-confirm-title="Reopen subject" data-confirm-ok="Reopen">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-light btn-icon"><i class="bi bi-arrow-counterclockwise"></i> Reopen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% for s in subjects %}{% set cs = s %}{% set nt = s.next %}{% include "instructor/_copy_term.html" %}{% endfor %}
+{% else %}
+<div class="card"><div class="empty py-5"><i class="bi bi-archive"></i><h3>Nothing archived yet</h3>
+  <p class="mb-0">When a semester is over, open the subject and press <b>End semester</b>. It moves here and stops scheduling classes.</p></div></div>
+{% endif %}
+{% endblock %}

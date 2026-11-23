@@ -1,0 +1,50 @@
+{# RFID card registration (inside the pop-up on My account).
+   One panel is shown at a time by static/js/card_registration.js #}
+<div class="text-center py-2">
+  <div data-panel="idle">
+    <div class="tap-ring"><i class="bi bi-credit-card-2-front"></i></div>
+    <h3 class="h5 fw-bold">Ready to register your card?</h3>
+    <p class="text-muted mb-4">Stand next to the attendance device, press <strong>Start</strong>, then tap your card on the reader.</p>
+    <button class="btn btn-primary btn-lg btn-icon" data-action="start"><i class="bi bi-play-fill"></i> Start</button>
+  </div>
+
+  <div data-panel="waiting" class="d-none">
+    <div class="tap-ring anim"><i class="bi bi-broadcast"></i></div>
+    <h3 class="h5 fw-bold">Tap your card on the reader now</h3>
+    <div class="countdown"><span data-seconds>60</span><span class="fs-6 text-muted fw-normal">s</span></div>
+    <p class="text-muted">The reader is reserved for you.</p>
+    <div data-reg-note class="alert alert-danger text-start d-none"></div>
+    <button class="btn btn-light" data-action="cancel">Cancel</button>
+  </div>
+
+  <div data-panel="detected" class="d-none">
+    <div class="tap-ring"><i class="bi bi-credit-card-2-front-fill"></i></div>
+    <h3 class="h5 fw-bold">Card detected</h3>
+    <p class="text-muted mb-1">Card ID</p>
+    <p class="font-monospace fs-5 fw-bold" data-uid></p>
+    <p class="text-muted">Is this the card you just tapped? <span class="small">(<span data-seconds>60</span>s left)</span></p>
+    <div class="d-flex gap-2 justify-content-center flex-wrap">
+      <button class="btn btn-primary btn-icon" data-action="confirm"><i class="bi bi-check-lg"></i> Yes, register it</button>
+      <button class="btn btn-light btn-icon" data-action="retry"><i class="bi bi-arrow-repeat"></i> No, tap again</button>
+    </div>
+  </div>
+
+  <div data-panel="done" class="d-none">
+    <div class="tap-ring ok"><i class="bi bi-patch-check-fill"></i></div>
+    <h3 class="h5 fw-bold">Your card is registered</h3>
+    <p class="text-muted mb-4">Tap it on the reader whenever check-in is open.</p>
+    <button class="btn btn-primary" data-card-done>Done</button>
+  </div>
+
+  <div data-message class="alert alert-warning mt-4 mb-0 d-none text-start"></div>
+</div>
+
+<details class="small text-muted mt-3">
+  <summary>How it works</summary>
+  <ol class="ps-3 mt-2 mb-0 d-grid gap-1">
+    <li>Only <strong>one student</strong> can register at a time. If someone else is using the reader, wait a moment.</li>
+    <li>You have <strong>60 seconds</strong> to tap, then 60 seconds to confirm.</li>
+    <li>Classmates who already have cards can still tap for attendance while you register.</li>
+    <li>Lost your card? Ask the admin to remove it, then register a new one here.</li>
+  </ol>
+</details>

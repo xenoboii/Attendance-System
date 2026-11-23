@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Recently deleted{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Recently deleted</h1>
+    <div class="sub">Deleted items stay here for {{ days }} days so you can restore them. After that they're deleted for good.</div>
+  </div>
+</div>
+
+{% set kind_icon = {'subject': 'journal-bookmark', 'section': 'collection', 'schedule': 'calendar-week',
+                    'session': 'calendar-check', 'student': 'person'} %}
+<div class="card table-card">
+  {% if items %}
+    <div class="table-responsive">
+      <table class="table table-modern">
+        <thead><tr><th>Item</th><th>Deleted</th><th>Deleted for good</th><th></th></tr></thead>
+        <tbody>
+          {% for it in items %}
+            <tr>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="stat-icon" style="width:34px;height:34px;font-size:.95rem"><i class="bi bi-{{ kind_icon[it.kind] }}"></i></span>
+                  <div class="min-w-0">
+                    <div class="fw-semibold text-truncate">{{ it.title }}</div>
+                    <div class="small text-muted text-truncate">{{ it.detail }}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="small text-muted text-nowrap">{{ it.deleted_at|nicedate }}</td>
+              <td class="text-nowrap">
+                <span class="chip {{ 'chip-bad' if it.days_left <= 3 else 'chip-warn' if it.days_left <= 7 else 'chip-muted' }}">
+                  {% if it.days_left == 0 %}Today{% elif it.days_left == 1 %}In 1 day{% else %}In {{ it.days_left }} days{% endif %}</span>
+              </td>
+              <td class="text-end text-nowrap">
+                <form method="post" class="d-inline" action="{{ url_for('instructor.trash_action', kind=it.kind, item_id=it.id, action='restore') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-light btn-icon"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+                </form>
+                <div class="dropdown d-inline">
+                  <button class="btn btn-sm btn-light" data-bs-toggle="dropdown" aria-label="More"><i class="bi bi-three-dots"></i></button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li><form method="post" action="{{ url_for('instructor.trash_action', kind=it.kind, item_id=it.id, action='delete') }}"
+                              data-confirm="Delete “{{ it.title }}” for good? This can't be undone."
+                              data-confirm-ok="Delete forever">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="dropdown-item text-danger"><i class="bi bi-trash3"></i> Delete forever</button></form></li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><i class="bi bi-trash3"></i><h3>Nothing here</h3>
+      <p class="mb-0">When you delete a subject, section, schedule, session or remove a student, it shows up here for {{ days }} days.</p></div>
+  {% endif %}
+</div>
+{% endblock %}
