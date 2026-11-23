@@ -561,9 +561,55 @@ def test_only_one_class_open_at_a_time(conn):
 
 
 def test_added_session_is_held_while_another_is_open(conn):
-    # "Add session" at a time that would open it right away: added, but not opened
+    # an older class date reopened by hand is open; a class added now whose time has come is
+    # added but NOT opened (one class at a time) - times don't overlap, so it's allowed
+    sessions.end_session(conn, PROF, 1, at("08:00"))
+    old = sessions.create_session(conn, PROF, 1, {"type": "regular", "session_date": (MONDAY - timedelta(days=7)).isoformat(),
+                                                  "start_time": "13:00", "checkin_mode": "manual"}, at("08:00"))
+    sessions.set_state(conn, PROF, old, "present", at("08:00"))
     sid = sessions.create_session(conn, PROF, 1, {"type": "regular", "session_date": MONDAY.isoformat(),
-                                                  "start_time": "07:00"}, T0)
+                                                  "start_time": "08:00"}, at("08:01"))
     s = sessions.get_session(conn, PROF, sid)
     assert (s["checkin_mode"], s["manual_state"]) == ("manual", "disabled")
-    assert sessions.describe(s, T0)["phase"] == "upcoming"
+    assert sessions.describe(s, at("08:01"))["phase"] == "upcoming"
+
+
+# ---------------------------------------------------------------- no overlapping classes on a date
+def _add(conn, start, end=None, day=MONDAY, type_="makeup"):
+    return sessions.create_session(conn, PROF, 1, {"type": type_, "session_date": day.isoformat(),
+                                                   "start_time": start, "end_time": end or ""}, T0)
+
+
+def test_dated_class_cannot_overlap_another_class_that_day(conn):
+    # the demo class runs 07:00-08:00 on MONDAY
+    with pytest.raises(ValidationError) as e:
+        _add(conn, "07:30", "08:30")
+    assert "Overlaps IT312 · BSIT 3A (7:00 AM – 8:00 AM)" in e.value.errors["start_time"]
+    _add(conn, "08:00", "09:00")                                     # touching end-to-start: fine
+    with pytest.raises(ValidationError):
+        _add(conn, "08:30")                                          # no end = one hour: overlaps 08:00-09:00
+    # an async activity has no class time, so it never clashes
+    sessions.create_session(conn, PROF, 1, {"type": "async", "session_date": MONDAY.isoformat(),
+                                            "title": "Reading"}, T0)
+
+
+def test_dated_class_cannot_overlap_a_weekly_class(conn):
+    nxt = MONDAY + timedelta(days=7)
+    classes.add_schedule(conn, PROF, 1, {"day_of_week": "0", "start_time": "13:00", "end_time": "15:00"})
+    with pytest.raises(ValidationError) as e:
+        _add(conn, "14:00", "16:00", day=nxt)                       # next Monday's weekly class
+    assert "Overlaps IT312 · BSIT 3A (1:00 PM – 3:00 PM)" in e.value.errors["start_time"]
+    # once that date is marked "no class", the time is free
+    classes.add_schedule_exception(conn, PROF, 1, {"exception_date": nxt.isoformat(), "reason": "Holiday"})
+    _add(conn, "14:00", "16:00", day=nxt)
+
+
+def test_async_back_to_regular_at_its_own_weekly_time(conn):
+    nxt = MONDAY + timedelta(days=7)
+    classes.add_schedule(conn, PROF, 1, {"day_of_week": "0", "start_time": "13:00", "end_time": "15:00"})
+    sessions.ensure_sessions_for_date(conn, nxt)
+    sid = conn.execute("SELECT id FROM class_sessions WHERE schedule_id IS NOT NULL").fetchone()[0]
+    sessions.set_async(conn, PROF, sid, "Module 2", T0)
+    # its own weekly slot doesn't count against it...
+    sessions.change_upcoming_async(conn, PROF, sid, {"choice": "regular", "start_time": "13:00", "end_time": "15:00"}, T0)
+    assert sessions.get_session(conn, PROF, sid)["type"] == "regular"

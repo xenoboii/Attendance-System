@@ -351,6 +351,61 @@ def has_records(conn, session_id) -> bool:
                         (session_id,)).fetchone() is not None
 
 
+DEFAULT_LENGTH_MIN = 60        # a class with no end time counts as one hour (for clash checks)
+
+
+def _end_or_default(start: str, end: str | None) -> str:
+    if end:
+        return end
+    t = datetime.strptime(start, "%H:%M")
+    total = min(t.hour * 60 + t.minute + DEFAULT_LENGTH_MIN, 23 * 60 + 59)
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def find_clash(conn, instructor_id, day: str, start: str, end: str | None, exclude_session_id=None):
+    """The instructor's other class that overlaps [start, end) on this date, or None.
+    Looks at classes added for that date (make-up / extra, not async) and the weekly classes
+    falling on that weekday (unless that date is marked "no class" for the section).
+    Touching end-to-start (9:00-10:00 and 10:00-11:00) is not a clash."""
+    end = _end_or_default(start, end)
+    rows = conn.execute(
+        SESSION_SELECT + """ WHERE sub.instructor_id = ? AND cs.session_date = ?
+                             AND cs.deleted_at IS NULL
+                             AND s.deleted_at IS NULL AND sub.deleted_at IS NULL AND sub.ended_at IS NULL""",
+        (instructor_id, day)).fetchall()
+    taken_schedules = set()                 # weekly slots already represented by a session that day
+    for r in rows:
+        r = dict(r)
+        if r["schedule_id"]:
+            taken_schedules.add(r["schedule_id"])   # incl. async: that weekly class isn't held in person
+        if r["id"] == exclude_session_id or r["type"] == "async" or not r["start_time"]:
+            continue
+        if r["start_time"] < end and start < _end_or_default(r["start_time"], r["end_time"]):
+            return {"code": r["subject_code"], "section": r["section_name"],
+                    "start": r["start_time"], "end": _end_or_default(r["start_time"], r["end_time"])}
+    weekday = datetime.strptime(day, "%Y-%m-%d").weekday()
+    for r in conn.execute(
+            """SELECT sc.id, sc.start_time, sc.end_time, sub.code, s.name AS section_name
+               FROM schedules sc JOIN sections s ON s.id = sc.section_id
+               JOIN subjects sub ON sub.id = s.subject_id
+               WHERE sub.instructor_id = ? AND sc.day_of_week = ? AND sc.deleted_at IS NULL
+                 AND s.deleted_at IS NULL AND sub.deleted_at IS NULL AND sub.ended_at IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM schedule_exceptions se
+                                 WHERE se.section_id = s.id AND se.exception_date = ?)""",
+            (instructor_id, weekday, day)):
+        if r["id"] in taken_schedules:
+            continue                     # already counted through its session for that date
+        if r["start_time"] < end and start < r["end_time"]:
+            return {"code": r["code"], "section": r["section_name"], "start": r["start_time"], "end": r["end_time"]}
+    return None
+
+
+def _clash_message(c) -> str:
+    t = lambda v: datetime.strptime(v, "%H:%M").strftime("%I:%M %p").lstrip("0")   # noqa: E731
+    return (f"Overlaps {c['code']} · {c['section']} ({t(c['start'])} – {t(c['end'])}) that day. "
+            "You can't hold two classes at once: pick another time.")
+
+
 def create_session(conn, instructor_id, section_id, form, now=None, *, commit=True) -> int:
     """Add a make-up / async / extra session on any date."""
     now = now or datetime.now()
@@ -379,6 +434,10 @@ def create_session(conn, instructor_id, section_id, form, now=None, *, commit=Tr
     title = (form.get("title") or "").strip()[:80] or None
     if type_ == "async" and not title:
         errors["title"] = "Give the async activity a name, e.g. Module 3 quiz."
+    if not errors and type_ != "async":
+        clash = find_clash(conn, instructor_id, day, start, end)
+        if clash:
+            errors["start_time"] = _clash_message(clash)
     if errors:
         raise ValidationError(errors)
 
@@ -468,6 +527,9 @@ def change_upcoming_async(conn, instructor_id, session_id, form, now=None):
                 raise ValidationError({"start_time": "Enter the start time for the regular session."})
             if end and (not TIME_RE.fullmatch(end) or end <= start):
                 raise ValidationError({"end_time": "End time must be after the start time."})
+            clash = find_clash(conn, instructor_id, day, start, end, exclude_session_id=session_id)
+            if clash:
+                raise ValidationError({"start_time": _clash_message(clash)})
             # class time still ahead: automatic as usual. Already passed: "not opened yet" (manual),
             # so nobody turns Absent the moment it's changed back - open check-in when ready.
             ahead = (day > now.strftime("%Y-%m-%d")
