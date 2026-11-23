@@ -3,7 +3,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from . import app_settings, backup, battery
+from . import app_settings, backup, battery, device_settings
 
 LOW_SPACE_PERCENT = 15          # warn when less than this much of the disk is free
 LOW_SPACE_BYTES = 500 * 1024 * 1024
@@ -106,4 +106,5 @@ def build(conn, config, now=None) -> dict:
             "signature_days_range": app_settings.SIGNATURE_DAYS_RANGE,
             "storage": storage(config["DATABASE"], config["DATA_DIR"], config["SIGNATURE_DIR"]),
             "attention": attention(conn), "activity": recent_activity(conn),
+            "default_code": device_settings.uses_shipped_code(conn, config.get("INSTRUCTOR_REGISTRATION_CODE", "")),
             "backup": backup.status(conn, config["DATA_DIR"], now)}

@@ -71,6 +71,11 @@
   <div class="d-flex flex-column gap-3 admin-overview-col">
     <div class="card"><div class="card-body">
       <div class="card-title-sm"><i class="bi bi-clipboard-check"></i> Needs attention</div>
+      {% if default_code %}
+        <div class="setting-row"><div class="me-auto"><b class="text-danger"><i class="bi bi-shield-exclamation"></i> Instructor registration code is still the default</b>
+            <span class="text-muted">· it's public, so anyone could register as an instructor. Set your own.</span></div>
+          <a class="btn btn-sm btn-light" href="{{ url_for('admin.device_page') }}">Open</a></div>
+      {% endif %}
       {% if backup.overdue %}
         <div class="setting-row"><div class="me-auto"><b>{{ 'No backup yet' if not backup.last else 'Last backup ' ~ backup.days ~ ' days ago' }}</b>
             <span class="text-muted">· download one so a dead SD card doesn't lose the records</span></div>
@@ -81,7 +86,7 @@
         <div class="setting-row"><div class="me-auto"><b>{{ n }}</b> {{ item.who }}{{ '' if n == 1 else 's' }} {{ item.text }}</div>
           <button type="button" class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#attention-{{ item.key }}">Open</button></div>
       {% else %}
-        {% if not backup.overdue %}<div class="small text-muted"><i class="bi bi-check2-circle text-success"></i> Nothing needs attention.</div>{% endif %}
+        {% if not backup.overdue and not default_code %}<div class="small text-muted"><i class="bi bi-check2-circle text-success"></i> Nothing needs attention.</div>{% endif %}
       {% endfor %}
       <div class="small text-muted mt-2">{{ c.archived }} archived subject{{ '' if c.archived == 1 else 's' }} · {{ c.admins }} admin account{{ '' if c.admins == 1 else 's' }}</div>
     </div></div>

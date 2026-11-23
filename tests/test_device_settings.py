@@ -99,3 +99,12 @@ def test_device_page_is_admin_only_and_asks_for_the_admin_password(app, client, 
 def test_instructors_cant_open_device_settings(app, client):
     login(client, "prof", "prof123", PROF_SITE)
     assert client.get("/admin/device", base_url=PROF_SITE).status_code == 403
+
+
+def test_overview_warns_while_the_public_default_code_is_used(app, client, admin):
+    login(client, "admin", ADMIN["password"], PROF_SITE)
+    page = client.get("/admin/", base_url=PROF_SITE).data
+    assert b"registration code is still the default" in page
+    client.post("/admin/device/instructor-code", data={"code": "OUR-OWN-9"}, base_url=PROF_SITE)
+    page = client.get("/admin/", base_url=PROF_SITE).data
+    assert b"registration code is still the default" not in page

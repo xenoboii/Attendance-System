@@ -30,6 +30,15 @@ def instructor_code(conn, default: str) -> str:
     return app_settings.get(conn, CODE_KEY) or default
 
 
+# The code that ships with the project. It's published (config.py, attendance.env.example, the
+# public repository), so anyone could register as an instructor until the admin replaces it.
+SHIPPED_DEFAULT_CODE = "PROF-2026"
+
+
+def uses_shipped_code(conn, default: str) -> bool:
+    return instructor_code(conn, default).strip().upper() == SHIPPED_DEFAULT_CODE
+
+
 def set_instructor_code(conn, actor_id, text) -> str:
     code = str(text or "").strip()
     if not CODE_RE.match(code):
